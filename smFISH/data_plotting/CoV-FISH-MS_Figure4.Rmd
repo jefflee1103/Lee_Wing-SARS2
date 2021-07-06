@@ -1,0 +1,486 @@
+---
+title: "CoV-FISH-MS_Figure4"
+author: "Jeff Lee"
+date: "23/03/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Environment
+```{r}
+library(tidyverse)
+library(patchwork)
+library(hrbrthemes)
+library(scales)
+library(ggbeeswarm)
+library(rstatix)
+```
+
+# Heterogeneity in different cell types 
+## Heterogeneity example in Vero
+```{r}
+# Quantification data
+Vero_8hpi_count <- read_csv("./Data/Figure4/Heterogenity_example_count.csv") %>%
+  mutate(time.adj = as.character(time.adj)) %>%
+  mutate(hours_post_infection = case_when(condition == "INF" ~ paste0(time.adj, "hpi"),
+                                          condition == "MOCK" ~ "Mock")) %>%
+  mutate(total_count = total_count + 1) %>%
+  mutate(hours_post_infection = fct_rev(hours_post_infection))
+
+# Percentage infection data
+Vero_8hpi_infection <- read_csv("./Data/Figure4/Heterogenity_example_p-infected.csv") %>%
+  mutate(Time = case_when(Time == "MOCK" ~ "Mock",
+                          TRUE ~ Time)) %>%
+  mutate(Time = as_factor(Time)) %>%
+  mutate(Time = fct_relevel(Time, c("Mock", "8hpi", "sup"))) %>%
+  filter(!is.na(Time))
+
+Vero_8hpi_infection_summary <- Vero_8hpi_infection %>%
+  group_by(Time) %>%
+  summarise(mean = mean(p.infected)) %>%
+  ungroup() %>%
+  mutate(mean = round(mean, 2)) %>%
+  mutate(label = paste0(mean, "%"))
+
+
+
+# * * * * * Plots
+Vero_8hpi_count %>%
+  # filter(condition == "INF") %>%
+  ggplot(aes(x = hours_post_infection, y = total_count, colour = condition)) +
+  geom_violin(trim = TRUE, adjust = 1.5, size = 0.25) +
+  geom_quasirandom(width = 0.3, size = 0.1, alpha = 0.25) +
+  scale_colour_manual(values = c("#d1ab75", "#c9d175")) +
+  scale_y_log10(limits = c(1, 1e7),
+                labels = trans_format("log10", math_format(10^.x))) +
+  labs(title = "gRNA count",
+       x = "", y = "Total RNA count + 1 (log10)") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5)) -> p1
+
+Vero_8hpi_infection %>%
+  ggplot(aes(x = Time, y = p.infected, fill = Time)) +
+  geom_bar(stat = "summary", width = 0.75) +
+  geom_linerange(stat = "summary", fun.data = "mean_sdl", 
+                 fun.args = list(mult = 1), size = 0.4) +
+  scale_y_continuous(breaks = seq(0, 100, by = 20),
+                     limits = c(0, 100)) + 
+  scale_fill_manual(values = c("#c9d175", "#d1ab75", "#d18975")) +
+  geom_label(data = Vero_8hpi_infection_summary,
+             aes(x = Time, y = mean + 7, label = label), 
+             size = 1.5, label.padding = unit(0.15, "lines"), label.size = 0.1,
+             inherit.aes = FALSE) + 
+  labs(title = "Infection state",
+       x = "", 
+       y = "% of cells per field of view") +
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> p2
+
+p1 + p2
+
+pdf("./Plots/Heterogeneity_Vero-example.pdf",
+    width = 7/2.54, height = 6/2.54)
+print(p1 + p2)
+dev.off()
+
+```
+
+## Heterogeneity example in A549
+```{r}
+# Percentage infection data
+A549_8hpi_infection <- read_csv("./Data/Figure4/Heterogenity_A549_p-infected.csv") %>%
+  mutate(Time = as_factor(Time)) %>%
+  mutate(Time = fct_relevel(Time, c("Mock", "8hpi", "sup"))) %>%
+  filter(!is.na(Time))
+
+A549_8hpi_infection_summary <- A549_8hpi_infection %>%
+  group_by(Time) %>%
+  summarise(mean = mean(p_infected)) %>%
+  ungroup() %>%
+  mutate(mean = round(mean, 2)) %>%
+  mutate(label = paste0(mean, "%"))
+
+# * * * * * Plots 
+A549_8hpi_infection %>%
+  ggplot(aes(x = Time, y = p_infected, fill = Time)) +
+  geom_bar(stat = "summary", width = 0.75) +
+  geom_linerange(stat = "summary", fun.data = "mean_sdl", 
+                 fun.args = list(mult = 1), size = 0.4) +
+  scale_y_continuous(breaks = seq(0, 100, by = 20),
+                     limits = c(0, 100)) + 
+  scale_fill_manual(values = c("#c9d175", "#d1ab75", "#d18975")) +
+  geom_label(data = A549_8hpi_infection_summary,
+             aes(x = Time, y = mean + 7, label = label), 
+             size = 1.5, label.padding = unit(0.15, "lines"), label.size = 0.1,
+             inherit.aes = FALSE) + 
+  labs(title = "A549-ACE2 Infection",
+       x = "", 
+       y = "% of cells per field of view") +
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> p3
+
+pdf("./Plots/Heterogeneity_A549-example.pdf",
+    width = 3.3/2.54, height = 5.6/2.54)
+print(p3)
+dev.off()
+
+```
+
+## Heterogeneity example in Calu
+```{r}
+# Percentage infection data
+Calu_8hpi_infection <- read_csv("./Data/Figure4/Heterogenity_Calu_p-infected.csv") %>%
+  mutate(Time = as_factor(Time)) %>%
+  mutate(Time = fct_relevel(Time, c("Mock", "8hpi", "sup"))) %>%
+  filter(!is.na(Time))
+
+Calu_8hpi_infection_summary <- Calu_8hpi_infection %>%
+  group_by(Time) %>%
+  summarise(mean = mean(p_infected)) %>%
+  ungroup() %>%
+  mutate(mean = round(mean, 2)) %>%
+  mutate(label = paste0(mean, "%"))
+
+# * * * * * Plots 
+Calu_8hpi_infection %>%
+  ggplot(aes(x = Time, y = p_infected, fill = Time)) +
+  geom_bar(stat = "summary", width = 0.75) +
+  geom_linerange(stat = "summary", fun.data = "mean_sdl", 
+                 fun.args = list(mult = 1), size = 0.4) +
+  scale_y_continuous(breaks = seq(0, 100, by = 20),
+                     limits = c(0, 100)) + 
+  scale_fill_manual(values = c("#c9d175", "#d1ab75", "#d18975")) +
+  geom_label(data = Calu_8hpi_infection_summary,
+             aes(x = Time, y = mean + 7, label = label), 
+             size = 1.5, label.padding = unit(0.15, "lines"), label.size = 0.1,
+             inherit.aes = FALSE) + 
+  labs(title = "Calu-3 Infection",
+       x = "", 
+       y = "% of cells per field of view") +
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> p4
+
+pdf("./Plots/Heterogeneity_Calu-example.pdf",
+    width = 3.3/2.54, height = 5.6/2.54)
+print(p4)
+dev.off()
+```
+
+# Spatial randomness
+## Calu distribution
+```{r}
+# Import data
+nndist_calu <- read_csv("./Data/Figure4/Spatial-randomness_Calu_nn_distances.csv") %>%
+  dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
+  pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
+  filter(!is.na(nn_distance)) %>%
+  mutate(nn_distance = nn_distance * 0.33)
+
+# Stats and parameters 
+p_value <- nndist_calu %>% t_test(nn_distance ~ data_type) %>% add_significance() %>% pull(p)
+p_value_label = paste0("p = ", p_value)
+
+observed_mean <- nndist_calu %>% filter(data_type == "Observed") %>%
+  pull(nn_distance) %>% mean() %>% round(1)
+observed_mean_label = paste0("mean = ", observed_mean, " µm")
+
+random_mean <- nndist_calu %>% filter(data_type == "Random") %>%
+  pull(nn_distance) %>% mean() %>% round(1)
+random_mean_label = paste0("mean = ", random_mean, " µm")
+
+
+# Plot
+ggplot() +
+  geom_histogram(data = subset(nndist_calu, data_type == "Observed"),
+                 aes(x = nn_distance, y = stat(ndensity), fill = data_type),
+                 colour = "white", bins = 40, alpha = 1, size = 0.1) +
+  geom_histogram(data = subset(nndist_calu, data_type == "Random"),
+                 aes(x = nn_distance, y = stat(ndensity), fill = data_type),
+                 bins = 80, alpha = 0.5) +
+  scale_fill_manual(values = c("gray50", "#75b8d1")) + 
+  scale_y_continuous(limits = c(0, 1),
+                     breaks = seq(0, 1, by = 0.2)) +
+  labs(x = "Nearest neighbour \n distance (µm)",
+       y = "Normalised count") + 
+  theme_classic(base_size = 7) +
+  theme(legend.title = element_blank(),
+        axis.line = element_blank(),
+        legend.position = c(0.7, 0.85),
+        legend.key.size = unit(0.1, "cm"),
+        legend.text = element_text(hjust = 0),
+        legend.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        axis.text = element_text(size = 5)) +
+  annotate("text", x = 325, y = 0.75, 
+           label = observed_mean_label, colour = "gray30", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.68, 
+           label = random_mean_label, colour = "#75b8d1", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.61, 
+           label = p_value_label, colour = "gray30", size = 2, hjust = 0) -> spatial_calu_plot
+
+spatial_calu_plot
+
+pdf("./Plots/Spatial-randomness_Calu.pdf",
+    width = 1.47, height = 1.55)
+print(spatial_calu_plot)
+dev.off()
+```
+
+## Vero distribution
+```{r}
+# Import data
+nndist_vero <- read_csv("./Data/Figure4/Spatial-randomness_Vero_nn_distances.csv") %>%
+  dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
+  pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
+  filter(!is.na(nn_distance)) %>%
+  mutate(nn_distance = nn_distance * 0.65)
+
+# Stats and parameters 
+p_value <- nndist_vero %>% t_test(nn_distance ~ data_type) %>% add_significance() %>% pull(p)
+p_value_label = paste0("p = ", p_value)
+
+observed_mean <- nndist_vero %>% filter(data_type == "Observed") %>%
+  pull(nn_distance) %>% mean() %>% round(0)
+observed_mean_label = paste0("mean = ", observed_mean, " µm")
+
+random_mean <- nndist_vero %>% filter(data_type == "Random") %>%
+  pull(nn_distance) %>% mean() %>% round(0)
+random_mean_label = paste0("mean = ", random_mean, " µm")
+
+
+# Plot
+ggplot() +
+  geom_histogram(data = subset(nndist_vero, data_type == "Observed"),
+                 aes(x = nn_distance, y = stat(ndensity), fill = data_type),
+                 colour = "white", bins = 40, alpha = 1, size = 0.1) +
+  geom_histogram(data = subset(nndist_vero, data_type == "Random"),
+                 aes(x = nn_distance, y = stat(ndensity), fill = data_type),
+                 bins = 80, alpha = 0.5) +
+  scale_fill_manual(values = c("gray50", "#75b8d1")) + 
+  scale_y_continuous(limits = c(0, 1),
+                     breaks = seq(0, 1, by = 0.2)) +
+  scale_x_continuous(limits = c(0, 900)) +
+  labs(x = "Nearest neighbour \n distance (µm)",
+       y = "Normalised count") + 
+  theme_classic(base_size = 7) +
+  theme(legend.title = element_blank(),
+        axis.line = element_blank(),
+        legend.position = c(0.7, 0.85),
+        legend.key.size = unit(0.1, "cm"),
+        legend.text = element_text(hjust = 0),
+        legend.background = element_blank(),
+        axis.text = element_text(size = 5),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  annotate("text", x = 325, y = 0.75, 
+           label = observed_mean_label, colour = "gray30", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.68, 
+           label = random_mean_label, colour = "#75b8d1", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.61, 
+           label = p_value_label, colour = "gray30", size = 2, hjust = 0) -> spatial_vero_plot
+
+spatial_vero_plot
+
+pdf("./Plots/Spatial-randomness_Vero.pdf",
+    width = 1.47, height = 1.55)
+print(spatial_vero_plot)
+dev.off()
+```
+
+## A549 distribution
+```{r}
+# Import data
+nndist_A549 <- read_csv("./Data/Figure4/Spatial-randomness_A549_nn_distances.csv") %>%
+  dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
+  pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
+  filter(!is.na(nn_distance)) %>%
+  mutate(nn_distance = nn_distance * 0.55)
+
+# Stats and parameters 
+p_value <- nndist_A549 %>% t_test(nn_distance ~ data_type) %>% add_significance() %>% pull(p)
+p_value_label = paste0("p = ", p_value)
+
+observed_mean <- nndist_A549 %>% filter(data_type == "Observed") %>%
+  pull(nn_distance) %>% mean() %>% round(0)
+observed_mean_label = paste0("mean = ", observed_mean, " µm")
+
+random_mean <- nndist_A549 %>% filter(data_type == "Random") %>%
+  pull(nn_distance) %>% mean() %>% round(0)
+random_mean_label = paste0("mean = ", random_mean, " µm")
+
+
+# Plot
+ggplot() +
+  geom_histogram(data = subset(nndist_A549, data_type == "Observed"),
+                 aes(x = nn_distance, y = stat(ndensity), fill = data_type),
+                 colour = "white", bins = 40, alpha = 1, size = 0.1) +
+  geom_histogram(data = subset(nndist_A549, data_type == "Random"),
+                 aes(x = nn_distance, y = stat(ndensity), fill = data_type),
+                 bins = 80, alpha = 0.5) +
+  scale_fill_manual(values = c("gray50", "#75b8d1")) + 
+  scale_y_continuous(limits = c(0, 1),
+                     breaks = seq(0, 1, by = 0.2)) +
+  scale_x_continuous(limits = c(0, 1000)) + 
+  labs(x = "Nearest neighbour \n distance (µm)",
+       y = "Normalised count") + 
+  theme_classic(base_size = 7) +
+  theme(legend.title = element_blank(),
+        axis.line = element_blank(),
+        legend.position = c(0.7, 0.85),
+        legend.key.size = unit(0.1, "cm"),
+        legend.text = element_text(hjust = 0),
+        legend.background = element_blank(),
+        axis.text = element_text(size = 5),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  annotate("text", x = 325, y = 0.75, 
+           label = observed_mean_label, colour = "gray30", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.68, 
+           label = random_mean_label, colour = "#75b8d1", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.61, 
+           label = p_value_label, colour = "gray30", size = 2, hjust = 0) -> spatial_A549_plot
+
+spatial_A549_plot
+
+pdf("./Plots/Spatial-randomness_A549.pdf",
+    width = 1.47, height = 1.55)
+print(spatial_A549_plot)
+dev.off()
+```
+
+# SUPPLEMENTARY
+
+## Calu-3 full spatial 
+```{r}
+# * * * * * data
+
+calu <- read_csv("./Data/Figure4/Spatial-distribution_Calu_full_nn_sim_distribution.csv") %>%
+  dplyr::select(-X1) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "model",
+    values_to = "distance"
+  ) %>%
+  mutate(model = case_when(
+    model == "data" ~ "Observed",
+    model == "clustered" ~ "Clustered",
+    model == "random" ~ "Random",
+    model == "spaced" ~ "Evenly spaced"
+  ))
+
+# * * * * * Statistics
+
+calu %>%
+  anova_test(distance ~ model) # significant
+
+calu %>%
+  tukey_hsd(distance ~ model)
+
+# * * * * * Plot
+
+## Beeswarm plot
+calu %>%
+  mutate(model = fct_relevel(model, c("Observed", "Clustered", "Random", "Evenly spaced"))) %>%
+  ggplot(aes(x = model, y = distance, colour = model)) +
+  geom_quasirandom(method = "quasirandom",
+                   alpha = 0.5, stroke = 0.1, size = 0.6) +
+  geom_boxplot(width = 0.1, outlier.size = 0, size = 0.2) +
+  labs(title = "Calu-3 (8 hpi)",
+       x = "",
+       y = "Nearest neighbour distance (µm)") + 
+  scale_colour_manual(values = c("gray50", "darkorange", "cadetblue1", "darkorchid1")) + 
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5)) -> calu_beeswarm
+
+calu_beeswarm
+
+pdf("./Plots/Spatial_calu_beeswarm.pdf",
+    width = 6.5/2.54, height = 6.5/2.54)
+print(calu_beeswarm)
+dev.off()
+  
+
+## Histogram plot
+ggplot() +
+  geom_histogram(data = subset(calu, model == "Clustered"),
+                 aes(x = distance, y = stat(ndensity), fill = model),
+                 bins = 75, alpha = 0.5) +
+  geom_histogram(data = subset(calu, model == "Evenly spaced"),
+                 aes(x = distance, y = stat(ndensity), fill = model),
+                 bins = 75, alpha = 0.5) +
+  geom_histogram(data = subset(calu, model == "Observed"),
+                 aes(x = distance, y = stat(ndensity), fill = model),
+                 colour = "white", bins = 30, alpha = 0.75, size = 0.1) +
+  geom_histogram(data = subset(calu, model == "Random"),
+                 aes(x = distance, y = stat(ndensity), fill = model),
+                 bins = 75, alpha = 0.5) +
+  scale_fill_manual(values = c("darkorange", "darkorchid1", "gray30", "cadetblue1")) + 
+  scale_y_continuous(limits = c(0, 1),
+                     breaks = seq(0, 1, by = 0.2)) +
+  labs(title = "Calu-3 (8 hpi)",
+       x = "Nearest neighbour distance (µm)",
+       y = "Normalised count") + 
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        axis.line = element_blank(),
+        legend.position = c(0.7, 0.85),
+        legend.key.size = unit(0.1, "cm"),
+        legend.text = element_text(hjust = 0),
+        legend.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5)) 
+
+calu %>%
+  mutate(model = fct_relevel(model, c("Observed", "Clustered", "Random", "Evenly spaced"))) %>%
+  ggplot(aes(x = distance, y = stat(ndensity), colour = model, fill = model)) +
+  geom_density(alpha = 0.3, size = 0.15, adjust = 0.9, outline.type = "full") +
+  scale_colour_manual(values = c("gray20", "darkorange", "cadetblue2", "darkorchid1")) + 
+  scale_fill_manual(values = c("gray20", "darkorange", "cadetblue2", "darkorchid1")) + 
+  labs(title = "Calu-3 (8 hpi)",
+       x = "Nearest neighbour distance (µm)",
+       y = "Normalised density") + 
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        axis.line = element_blank(),
+        legend.position = c(0.8, 0.85),
+        legend.key.size = unit(0.1, "cm"),
+        legend.text = element_text(hjust = 0),
+        legend.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5)) -> calu_density
+
+calu_density
+
+pdf("./Plots/Spatial_calu_density.pdf",
+    width = 6.5/2.54, height = 6.5/2.54)
+print(calu_density)
+dev.off()
+
+
+
+
+
+
+```
+
+
+
+

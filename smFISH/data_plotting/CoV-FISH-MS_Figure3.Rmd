@@ -1,0 +1,727 @@
+---
+title: "CoV-FISH-MS_Figure3"
+author: "Jeff Lee"
+date: "23/03/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# ENVIRONMENT
+
+```{r}
+library(tidyverse)
+library(patchwork)
+library(hrbrthemes)
+library(scales)
+library(ggbeeswarm)
+library(rstatix)
+```
+
+# KINETICS
+
+## Total RNA count
+
+```{r}
+# * * * * *  Prepare dataframes
+
+# Full dataframe
+RNA_df <- read_csv("./Data/Figure3/Kinetics_RNA_quant_df5.csv")
+
+# Ratio dataframe
+RNA_df_ratio <- RNA_df %>%
+  pivot_wider(id_cols = c(Label, time, condition, repeat_exp),
+              names_from = channel,
+              values_from = total_vRNAs) %>%
+  mutate(sgRNA = ORFN - gRNA) %>%
+  mutate(ratio = sgRNA/gRNA) %>%
+  filter(sgRNA >= 0) %>% 
+  filter(ratio != Inf) 
+
+RNA_df_ratio %>%
+  filter(time == 10) %>%
+  filter(condition == "Untreated") %>%
+  mutate(category = case_when(
+    gRNA <= 100 ~ "Low",
+    gRNA > 100 & gRNA < 100000 ~ "Mid",
+    gRNA >= 100000 ~ "High")) %>%
+  group_by(category) %>%
+  summarise(n = n())
+
+# Some function for plotting
+median_se <- function(x) {
+  if (!is.numeric(x)) {
+    stop("x must be a numeric vector")
+  }
+  mean_x <- stats::median(x, na.rm = TRUE)
+  sd_x <- WRS2::msmedse(x, sewarn = FALSE)
+  data.frame("y" = mean_x,
+             "ymin" = mean_x - sd_x,
+             "ymax" = mean_x + sd_x)
+}
+
+# * * * * * Plotting
+# gRNA kinetics 
+RNA_df %>%
+  filter(channel == "gRNA") %>%
+  filter(total_vRNAs > 0) %>%
+  mutate(condition = fct_rev(condition)) %>%
+  ggplot(aes(x = as.factor(time), y = total_vRNAs, colour = condition)) +
+  geom_point(position = position_jitterdodge(jitter.width = 0.5, dodge.width = 0.75),
+            size = 0.5, alpha = 0.25, stroke = 0.1) +
+  geom_hline(yintercept = 100000, linetype = "dashed", size = 0.5, alpha = 0.25) + 
+  scale_y_log10(limits = c(10^0, 10^8),
+                breaks = trans_breaks('log10', function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+  labs(title = "gRNA kinetics",
+       x = "Hours post infection",
+       y = "Total RNA count per cell (Log)") +
+  scale_colour_manual(values = c("#406e3c", "#8fd175")) + 
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = c(0.2, 0.9),
+        legend.background = element_blank(),
+        legend.key.size = unit(0.3, "cm"),
+        legend.title = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  guides(color = guide_legend(override.aes = list(size = 1.5, alpha = 1))) -> gRNA_kinetics
+
+gRNA_kinetics
+
+pdf("./Plots/gRNA_kinetics.pdf",
+    width = 5.5/2.54, height = 5.5/2.54)
+print(gRNA_kinetics)
+dev.off()
+
+# sgRNA kinetics 
+RNA_df_ratio %>%
+  mutate(condition = fct_rev(condition)) %>%
+  ggplot(aes(x = as.factor(time), y = sgRNA, colour = condition)) +
+  geom_point(position = position_jitterdodge(jitter.width = 0.5, dodge.width = 0.75),
+            size = 0.5, alpha = 0.25, stroke = 0.1) +
+  geom_hline(yintercept = 100000, linetype = "dashed", size = 0.5, alpha = 0.25) + 
+  scale_y_log10(limits = c(10^0, 10^8),
+                breaks = trans_breaks('log10', function(x) 10^x),
+                labels = trans_format("log10", math_format(10^.x))) +
+  labs(title = "sgRNA kinetics",
+       x = "Hours post infection",
+       y = "Total RNA count per cell (Log)") +
+  scale_colour_manual(values = c("#83396d", "#d175b8")) + 
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = c(0.2, 0.9),
+        legend.background = element_blank(),
+        legend.key.size = unit(0.3, "cm"),
+        legend.title = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  guides(color = guide_legend(override.aes = list(size = 1.5, alpha = 1))) -> sgRNA_kinetics
+
+sgRNA_kinetics
+
+pdf("./Plots/sgRNA_kinetics.pdf",
+    width = 5.5/2.54, height = 5.5/2.54)
+print(sgRNA_kinetics)
+dev.off()
+
+```
+
+## Proportion of bulk reads
+
+```{r}
+# * * * * * Prepare dataframe 
+# Get count sum
+count_sum <- RNA_df_ratio %>% 
+  mutate(category = case_when(
+    gRNA <= 100 ~ "Low",
+    gRNA > 100 & gRNA < 100000 ~ "Mid",
+    gRNA >= 100000 ~ "High")) %>%
+  group_by(time, condition, category) %>%
+  summarise(ORFN_sum = sum(ORFN),
+            gRNA_sum = sum(gRNA),
+            sgRNA_sum = sum(sgRNA)) %>%
+  ungroup() %>%
+  group_by(time, condition) %>%
+  summarise(ORFN_total = sum(ORFN_sum),
+            gRNA_total = sum(gRNA_sum),
+            sgRNA_total = sum(sgRNA_sum))
+
+# Get dataframe for relative contiribution of viral RNA from each cell cateogry
+rel_count <- RNA_df_ratio %>% 
+  mutate(category = case_when(
+    gRNA <= 100 ~ "Low",
+    gRNA > 100 & gRNA < 100000 ~ "Mid",
+    gRNA >= 100000 ~ "High")) %>%
+  group_by(time, condition, category) %>%
+  summarise(ORFN_sum = sum(ORFN),
+            gRNA_sum = sum(gRNA),
+            sgRNA_sum = sum(sgRNA),
+            cell_count = n()) %>%
+  ungroup() %>%
+  left_join(count_sum, by = c("time", "condition")) %>%
+  mutate(ORFN_p = ORFN_sum/ORFN_total * 100,
+         gRNA_p = gRNA_sum/gRNA_total * 100,
+         sgRNA_p = sgRNA_sum/sgRNA_total * 100)
+
+# * * * * * Plotting
+# gRNA relative contribution 
+ordered_category <- c("High", "Mid", "Low")
+rel_count %>%
+  mutate(condition = fct_rev(condition)) %>%
+  mutate(category = fct_relevel(category, ordered_category)) %>%
+  mutate(category = fct_recode(category, 
+                               "High: >1e5" = "High",
+                               "Mid: 100~1e5 " = "Mid",
+                               "Low: <100" = "Low")) %>%
+  ggplot(aes(x = as.factor(time), y = gRNA_p, fill = category)) +
+  geom_col(width = 0.8, alpha = 0.8) +
+  scale_fill_manual(values = c("#2D708EFF", "#29AF7FFF", "#B8DE29FF")) +
+  labs(title = "Relative contribution to total vRNA",
+       x = "Hours post infection",
+       y = "Percentage",
+       fill = "Cellular gRNA burden") +
+  facet_wrap(~ condition) +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = "right",
+        legend.key.size = unit(0.3 ,"cm"),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> rel_vRNA
+
+rel_vRNA
+
+
+pdf("./Plots/rel_cont_vRNA.pdf",
+    width = 9/2.54, height = 5.5/2.54)
+print(rel_vRNA)
+dev.off()
+
+
+```
+
+## Percentage super-permissive cells
+
+```{r}
+# Import data
+RDV_psup <- read_csv("./Data/Figure3/RDV_p-superinfected.csv") %>%
+  group_by(File, time, condition) %>%
+  summarise(p_sup = sum(superinfected)/n()*100) %>% ungroup() %>%
+  mutate(time = fct_rev(time),
+         condition = fct_rev(condition))
+
+# Statistics
+RDV_psup %>% group_by(time, condition) %>% shapiro_test(p_sup) # Not normal
+RDV_psup %>% group_by(time) %>% dunn_test(p_sup ~ condition, p.adjust.method = "holm")
+
+# Annotation dataframe
+RDV_psup_anno <- RDV_psup %>% group_by(time) %>% 
+  dunn_test(p_sup ~ condition, p.adjust.method = "holm") %>% ungroup() %>%
+  mutate(p.adj = formatC(p.adj, format = "e", digits = 1)) %>%
+  mutate(label = paste0(p.adj.signif,"\np=",p.adj)) %>%
+  mutate(time = fct_rev(time)) %>%
+  mutate(y_pos = case_when(
+    time == "8 hpi" ~ 30,
+    time == "24 hpi" ~ 79
+  ))
+
+RDV_psup_meanlabel <- RDV_psup %>% group_by(time, condition) %>% 
+  summarise(mean = mean(p_sup)) %>% ungroup() %>%
+  mutate(mean = round(mean, 1)) %>%
+  mutate(label = paste0(mean, "%")) %>%
+  mutate(time = fct_rev(time))
+
+
+# Plot
+RDV_psup %>%
+  ggplot(aes(x = time, y = p_sup, fill = condition)) +
+  geom_bar(stat = "summary", width = 0.65, position = position_dodge(width = 0.75), alpha = 0.8) +
+  geom_linerange(stat = "summary", fun.data = "mean_sdl", 
+                 fun.args = list(mult = 1), size = 0.4,
+                 position = position_dodge(width = 0.75)) +
+  scale_y_continuous(breaks = seq(0, 80, by = 20),
+                     limits = c(0, 80)) + 
+  scale_fill_manual(values = c("#26547c", "#75b8d1")) +
+  geom_label(data = RDV_psup_meanlabel,
+             aes(x = time, y = mean + 9, label = label, group = condition),
+             size = 1.5, label.padding = unit(0.05, "lines"), label.size = 0.075,
+             inherit.aes = FALSE,
+             position = position_dodge(width = 0.75)) +
+  labs(title = "% Super-permissive",
+       x = "", 
+       y = "% of cells") +
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = c(0.25, 0.9),
+        legend.direction = "vertical",
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        legend.key.size = unit(0.1 ,"cm"),
+        legend.text = element_text(size = 5),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  geom_text(data = RDV_psup_anno, aes(x = time, y = y_pos, label = label), 
+            size = 1.5, alpha = 0.7, inherit.aes = FALSE) -> p5
+
+p5
+
+pdf("./Plots/RDV_psuperinfected_suppression.pdf",
+    width = 3.1/2.54, height = 5.5/2.54)
+print(p5)
+dev.off()
+
+```
+
+## sgRNA expressing cells
+
+```{r}
+sgRNA_exp_cells <- read_csv("./Data/Figure3/sgRNA-expressing_cells_detection_normalised.csv")
+
+sgRNA_exp_cells %>%
+  filter(!(time == 2 & condition == "RDV" & repeat_exp == "R2")) %>%
+  mutate(condition = fct_rev(condition)) %>%
+  ggplot(aes(x = as.factor(time), y = p_permissive, colour = condition)) + 
+  geom_point(stat = "summary", size = 1.75) + 
+  geom_line(aes(group = condition), stat = "summary") +
+  geom_linerange(stat = "summary", size = 0.25) +
+  scale_colour_manual(values = c("#83396d", "#d175b8")) +
+  scale_y_continuous(limits = c(30, 110)) +
+  labs(title = "Viral factory kinetics",
+       x = "Hours post infection",
+       y = "Number of factories per cell") +
+  labs(title = "% sgRNA expressing cells",
+       x = "Hours post infection",
+       y = "Percentage") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = c(0.8, 0.3),
+        legend.background = element_blank(),
+        legend.key.size = unit(0.3, "cm"),
+        legend.title = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> p_sgRNA
+
+p_sgRNA
+
+
+pdf("./Plots/sgRNA_expressing.pdf",
+    width = 5.5/2.54, height = 5.5/2.54)
+print(p_sgRNA)
+dev.off()
+
+```
+
+
+## sgRNA/gRNA ratio
+
+```{r}
+# * * * * * Plots
+
+## Ratio by time
+RNA_df_ratio %>%
+  filter(ratio != Inf) %>%
+  mutate(condition = fct_rev(condition))  %>%
+  ggplot(aes(x = as.factor(time), y = ratio, colour = condition)) +
+  geom_point(position = position_jitterdodge(jitter.width = 0.5, dodge.width = 0.75),
+            size = 0.5, alpha = 0.2, stroke = 0.1) +
+  geom_point(aes(x = as.factor(time), y = ratio, group = condition),
+                  stat = "summary", fun = median, position = position_dodge(width = 0.75), 
+                  size = 1, colour = "gray50",
+                  inherit.aes = FALSE, show.legend = FALSE) +
+  geom_line(aes(group = condition), stat = "summary", 
+            alpha = 0.75) +
+  geom_hline(yintercept = 1, linetype = "dashed",
+             size = 0.5, colour = "gray75") + 
+  scale_y_continuous(limits = c(0, 30)) +
+  labs(title = "sgRNA/gRNA ratio by hpi",
+       x = "Hours post infection",
+       y = "sgRNA/gRNA ratio") +
+  scale_colour_manual(values = c("#26547c", "#75b8d1")) + 
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.title = element_blank(),
+        legend.position = c(0.20, 0.85),
+        legend.background = element_blank(),
+        legend.direction = "vertical",
+        legend.key.size = unit(0.3, "cm"),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  guides(color = guide_legend(override.aes = list(size = 2, alpha = 1))) -> ratio_time
+
+ratio_time
+
+pdf("./Plots/Kinetics_ratio-time.pdf",
+    width = 5.25/2.54, height = 5.5/2.54)
+print(ratio_time)
+dev.off()
+
+## Ratio by category
+ratio_anno_category <- RNA_df_ratio %>%
+  filter(gRNA > 10) %>%
+  mutate(category = case_when(
+    gRNA <= 100 ~ "Low",
+    gRNA > 100 & gRNA < 100000 ~ "Mid",
+    gRNA >= 100000 ~ "High")) %>%
+  group_by(category, time, condition) %>%
+  summarise(ratio_bulk = mean(ratio)) %>% ungroup() %>%
+  mutate(condition = fct_rev(condition))
+
+RNA_df_ratio %>%
+  filter(gRNA > 10) %>%
+  mutate(category = case_when(
+    gRNA <= 100 ~ "Low",
+    gRNA > 100 & gRNA < 100000 ~ "Mid",
+    gRNA >= 100000 ~ "High")) %>%
+  mutate(condition = fct_rev(condition)) %>%
+  mutate(category = fct_relevel(category, c("Low", "Mid", "High"))) %>%
+  ggplot(aes(x = as.factor(category), y = ratio, colour = condition)) +
+  geom_point(position = position_jitterdodge(jitter.width = 0.5, dodge.width = 0.75),
+            size = 0.5, alpha = 0.2, stroke = 0.1) +
+  geom_pointrange(data = ratio_anno_category,
+                  aes(x = as.factor(category), y = ratio_bulk, colour = condition),
+                  stat = "summary",
+                  size = 0.4,
+                  position = position_dodge(width = 0.75), 
+                  inherit.aes = FALSE, show.legend = FALSE) +
+  geom_hline(yintercept = 1, linetype = "dashed",
+             size = 0.5, colour = "gray75") +
+  labs(title = "sgRNA/gRNA ratio by gRNA burden",
+       x = "gRNA burden classification",
+       y = "sgRNA/gRNA ratio") +
+  scale_colour_manual(values = c("#26547c", "#75b8d1")) + 
+  coord_cartesian(ylim = c(0, 30)) +
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.title = element_blank(),
+        legend.position = c(0.8, 0.85),
+        legend.background = element_blank(),
+        legend.direction = "vertical",
+        legend.key.size = unit(0.3, "cm"),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  guides(color = guide_legend(override.aes = list(size = 2, alpha = 1))) -> ratio_category
+
+ratio_category
+
+pdf("./Plots/Kinetics_ratio-category.pdf",
+    width = 5.25/2.54, height = 5.5/2.54)
+print(ratio_category)
+dev.off()
+
+```
+
+## Viral factory number
+
+```{r}
+RNA_df %>%
+  mutate(condition = fct_rev(condition)) %>%
+  filter(time != 24) %>%
+  filter(channel == "gRNA") %>%
+  ggplot(aes(x = as.factor(time), y = repSites, colour = condition)) +
+  geom_line(aes(group = condition), stat = "summary", alpha = 0.4) +
+  geom_linerange(stat = "summary", size = 0.25) +
+  geom_point(stat = "summary", size = 1.75) +
+  scale_colour_manual(values = c("#26547c", "#75b8d1")) +
+  labs(title = "Viral factory kinetics",
+       x = "Hours post infection",
+       y = "Number of factories per cell") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = c(0.2, 0.8),
+        legend.background = element_blank(),
+        legend.key.size = unit(0.3, "cm"),
+        legend.title = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> vfactory_plot
+
+vfactory_plot
+
+pdf("./Plots/vfactory_kinetics.pdf",
+    width = 5.5/2.54, height = 5.5/2.54)
+print(vfactory_plot)
+dev.off()
+
+```
+
+## Viral factory content 
+
+```{r}
+factory_df <- read_csv("./Data/Figure3/Kinetics_vFactory.csv")
+
+factory_df %>%
+  filter(channel == "gRNA") %>%
+  mutate(time = fct_rev(as.factor(time))) %>%
+  ggplot(aes(x = as.factor(time), y = repSite_content, colour = condition)) +
+  geom_point(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.75),
+            size = 0.3, alpha = 0.5, stroke = 0.1) +
+  geom_violin(position = position_dodge(width = 0.75),
+              alpha = 0.4, size = 0.2) +
+  # geom_boxplot(position = position_dodge(width = 0.75),
+  #              width = 0.2) +
+  scale_y_log10() +
+  scale_colour_manual(values = c("#8fd175", "#406e3c")) +
+  labs(title = "Number of gRNA per factory",
+       x = "Hours post infection",
+       y = "# Molecules per factory (log)") +
+  coord_flip(ylim = c(4, 20000)) +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size =7),
+        axis.line = element_blank(),
+        legend.position = c(0.8, 0.8),
+        legend.background = element_blank(),
+        legend.key.size = unit(0.3, "cm"),
+        legend.title = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  guides(colour = guide_legend(reverse=TRUE)) -> vf_content
+
+vf_content
+
+pdf("./Plots/vfactory_content_kinetics.pdf",
+    width = 5.5/2.54, height = 5.5/2.54)
+print(vf_content)
+dev.off()
+
+```
+
+
+
+# SUPPLEMENTARY
+
+## Remdesivir IC50
+
+```{r}
+# Import data
+dose <- read_csv("./Data/Figure3/RDV-IC50-tidy.csv") %>%
+  mutate(RDV_log = log10(RDV))
+
+# Fit non-linear model ([Inhibitor] vs. normalised response model)
+fit <- nls(SARS ~ bot + (top - bot)/(1 + 10^(RDV_log - log10(IC50))),
+           data = dose,
+           start = list(bot = 10, top = 100, IC50 = 0.001)) 
+
+# Create annotation parameters 
+Hill <- -1
+IC50 <- tidy(fit) %>% filter(term == "IC50") %>% pull(estimate)
+IC50_anno <- paste0("IC50 = ", round(IC50, 2), " µM")
+IC90 <- ((100 - 90)/90)^(1/Hill) * IC50
+IC90_anno <- paste0("IC90 = ", round(IC90, 2), " µM")
+
+# Plot 
+dose %>%
+  ggplot(aes(x = RDV, y = SARS)) +
+  geom_smooth(method = "nls",
+              formula = y ~ bot + (top - bot)/(1 + 10^(x - log10(IC50))),
+              method.args = list(start = c(bot = 0, top = 100, IC50 = 0.001)),
+              se = FALSE,
+              colour = "#758bd1", size = 0.5, alpha = 0.75) +
+  geom_pointrange(stat = "summary", fun.data = "mean_se",
+                  fun.args = list(mult = 1),
+                  colour = "#3f2d54", size = 0.25) +
+  scale_x_log10(limits = c(1e-3, 1e2),
+                labels = trans_format("log10", math_format(10^.x)),
+                breaks = c(10^-3, 10^-2, 10^-1, 10^0, 10^1, 10^2)) +
+  labs(title = "RDV dose response curve",
+       x = "[Remdesivir (Log)] (µM)",
+       y = "SARS-CoV-2 RNA\n(% of Untreated)") + 
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 8),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  annotate("text", x = 10^-0.5, y = 180, 
+           label = IC50_anno, colour = "#3f2d54", size = 2, hjust = 0) +
+  annotate("text", x = 10^-0.5, y = 150, 
+           label = IC90_anno, colour = "#3f2d54", size = 2, hjust = 0) -> RDV_IC50
+
+RDV_IC50
+
+pdf("./Plots/RDV-IC50.pdf",
+    width = 4.5/2.54, height = 4.5/2.54)
+print(RDV_IC50)
+dev.off()
+
+```
+
+## RDV decay curve
+
+```{r}
+# Import data
+decay_df_untreated <- read_csv("./Data/Figure3/CF06_RNA-quantification.csv") %>%
+  filter(condition == "Untreated")
+decay_df_RDV <- read_csv("./Data/Figure3/CF06_RNA-quantification.csv") %>%
+  filter(condition == "RDV")
+
+# Decay functions fitted from jupyter file
+gRNA_RDV_fit <- function(x){
+  5058186.847403619 * exp(-0.05813581984152092 * (x+24)) - 260624.66587935033
+}
+ORFN_RDV_fit <- function(x){
+  916020131.6680868 * exp(-0.22665539948104615 * (x+24)) + 93076.98792596412
+}
+decay_line_gRNA <- tibble(time = seq(0, 35, 0.01)) %>%
+  mutate(fit = gRNA_RDV_fit(time), Channel = "gRNA") %>%
+  mutate(time = time + 24)
+decay_line_ORFN <- tibble(time = seq(0, 35, 0.01)) %>%
+  mutate(fit = ORFN_RDV_fit(time), Channel = "ORFN") %>%
+  mutate(time = time +24)
+
+decay_line <- bind_rows(decay_line_gRNA, decay_line_ORFN) %>%
+  filter(Channel == "gRNA")
+
+decay_anno <- tibble(
+  Channel = c("gRNA", "ORFN"),
+  halflife = c(11.9, 3.1)) %>%
+  mutate(x_pos = halflife + 4) %>%
+  mutate(label = paste0("t1/2 = ", halflife, " hrs")) %>%
+  filter(Channel == "gRNA")
+
+# Define median_se function
+median_se <- function(x) {
+  if (!is.numeric(x)) {
+    stop("x must be a numeric vector")
+  }
+  mean_x <- stats::median(x, na.rm = TRUE)
+  sd_x <- WRS2::msmedse(x, sewarn = FALSE)
+  data.frame("y" = mean_x,
+             "ymin" = mean_x - sd_x,
+             "ymax" = mean_x + sd_x)
+}
+
+# Plot
+decay_df_untreated %>%
+  mutate(condition = fct_rev(condition)) %>%
+  filter(Channel == "gRNA") %>%
+  ggplot(aes(x = time, y = RNA_count)) +
+  geom_point(position = position_jitter(width = 0.7),
+             alpha = 0.1, stroke = 0.1,size = 0.6, colour = "#26547c") + 
+  geom_pointrange(stat = "summary", fun.data = median_se,
+                  size = 0.3, alpha = 1, colour = "#26547c") +
+  scale_x_continuous(breaks = c(24, 26, 28, 32, 48),
+                     limits = c(22, 50)) +
+  scale_y_continuous(labels = label_number(scale = 1/1e6, accuracy = 0.1)) +
+  coord_cartesian(ylim = c(0, 10*10^6)) +
+  labs(title = "gRNA decay curve (Untreated)",
+       x = "Hours post infection",
+       y = expression(RNA~count~(x10^6)~linear~scale)) + 
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> decay_UT
+
+decay_df_RDV %>%
+  mutate(condition = fct_rev(condition)) %>%
+  filter(Channel == "gRNA") %>%
+  ggplot(aes(x = time, y = RNA_count)) +
+  geom_point(position = position_jitter(width = 0.7),
+             alpha = 0.2, stroke = 0.1, size = 0.6, colour = "#75b8d1") + 
+  geom_pointrange(stat = "summary", fun.data = median_se,
+                  size = 0.3, alpha = 1, colour = "#26547c") +
+  geom_line(data = decay_line, aes(x = time, y = fit, group = Channel),
+            linetype = "dashed", colour = "#d1ab75", size = 0.5,
+            inherit.aes = FALSE) +
+  geom_vline(data = decay_anno, aes(xintercept = x_pos+24, group = Channel),
+             linetype = "dotted", colour = "gray30", size = 0.4) +
+  geom_text(data = decay_anno, aes(x = x_pos + 26, y = 1500000, label = label, group = Channel),
+            size = 2, hjust = 0,
+            inherit.aes = FALSE) +
+  scale_x_continuous(breaks = c(24, 26, 28, 32, 48),
+                     limits = c(22, 50)) +
+  scale_y_continuous(labels = label_number(scale = 1/1e6, accuracy = 0.1)) +
+  coord_cartesian(ylim = c(0, 10*10^6)) +
+  labs(title = "gRNA decay curve (RDV treatment at 24 hpi)",
+       x = "Hours post infection",
+       y = expression(RNA~count~(x10^6)~linear~scale)) + 
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> decay_RDV
+  
+decay_UT + decay_RDV
+
+
+pdf("./Plots/Decay_combined.pdf",
+    width = 11/2.54, height = 5.5/2.54)
+print(decay_UT + decay_RDV)
+dev.off()
+
+```
+
+## Cytopathy after 24 hpi
+
+```{r}
+# * * * * * Import data
+
+decay_cellcount <- read_csv("./Data/Figure3/CF06_viable_cell_count.csv")
+
+# * * * * *  Cell count plot
+
+mock_avg <- decay_cellcount %>%
+  filter(condition == "Mock") %>%
+  group_by(time) %>%
+  summarise(avg_count = mean(n_cell)) %>% ungroup()
+
+decay_cellcount_df <- decay_cellcount %>%
+  left_join(mock_avg, by = "time") %>%
+  mutate(norm_count = n_cell/avg_count)
+
+## Statistics 
+decay_cellcount_anno <- decay_cellcount_df %>% 
+  filter(condition != "Mock") %>%
+  group_by(time) %>%
+  t_test(norm_count ~ condition) %>% add_significance()
+
+## Plot
+decay_cellcount_df %>%
+  filter(condition != "Mock") %>%
+  mutate(condition = fct_relevel(condition, c("Untreated", "RDV"))) %>%
+  ggplot(aes(x = time, y = norm_count, fill = condition)) +
+  geom_bar(stat = "summary", width = 0.6,
+           position = position_dodge(width = 0.75)) +
+  geom_linerange(aes(x = time, y = norm_count, group = condition), size = 0.5, alpha = 1,
+                 stat = "summary", fun.data = "mean_se", fun.args = list(mult = 1),
+                 position = position_dodge(width = 0.75),
+                 inherit.aes = FALSE) +
+  geom_text(data = decay_cellcount_anno,
+            aes(x = time, y = 0.9, label = p.signif),
+            size = 2.5,
+            inherit.aes = FALSE) + 
+  scale_fill_manual(values = c("#26547c", "#75b8d1")) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(title = "Number of viable cells",
+       x = "Hours post infection",
+       y = "Normalised cell count per field of view") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        axis.text.x = element_text(hjust = 0.5, vjust = 0.5),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> decay_cellcount
+
+decay_cellcount
+
+pdf("./Plots/Decay_cellcount.pdf",
+    width = 4/2.54, height = 5.86/2.54)
+print(decay_cellcount)
+dev.off()
+
+```
+
+
+
+
+

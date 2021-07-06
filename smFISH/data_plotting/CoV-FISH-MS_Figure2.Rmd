@@ -1,0 +1,337 @@
+---
+title: "CoV-FISH-MS_Figure2"
+author: "Jeff Lee"
+date: "20/03/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Environment
+```{r}
+library(tidyverse)
+library(hrbrthemes)
+library(patchwork)
+library(rstatix)
+
+```
+
+# N protein 
+## gRNA line profiles 
+```{r}
+line_profile_data <- read_csv("./Data/CoV-FISH-07_N-protein/N-protein_gRNA_line-profiles.csv")
+
+ggplot(line_profile_data) +
+  geom_line(aes(x = Distance, y = normalised, colour = signal),
+            size = 0.5) +
+  scale_colour_manual(values = c("#8fd175", "#d18975")) +
+  labs(title = "Fluorescence profile",
+       x = "Distance (µm)",
+       y = "Normalised \nfluorescence") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        legend.position = "bottom",
+        axis.line = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        legend.title = element_blank()) -> plot1
+
+plot1
+
+```
+
+## N protein overlap with gRNA and sgRNA 
+```{r}
+# Import data
+N_overlap <- read_csv("./Data/Figure2/p_NProtein-overlap.csv")
+
+# Get mean labels
+N_overlap_anno <- N_overlap %>%
+  group_by(species) %>%
+  summarise(mean = mean(p_NCed)) %>%
+  ungroup() %>%
+  mutate(label = paste0(round(mean, 1), "%"))
+
+# Statistics
+N_overlap %>% group_by(species) %>% shapiro_test(p_NCed) # normal
+star <- N_overlap %>% t_test(p_NCed ~ species) %>% add_significance() %>% pull(p.signif)
+pval <- N_overlap %>% t_test(p_NCed ~ species) %>% add_significance() %>% pull(p) 
+stat_anno <- paste0(star, "\np=", pval)
+
+# Plot 
+N_overlap %>%
+  mutate(species = fct_rev(species)) %>%
+  ggplot(aes(x = species, y = p_NCed, fill = species)) +
+  geom_bar(stat = "summary", width = 0.75) +
+  geom_linerange(stat = "summary", fun.data = "mean_sdl", 
+                 fun.args = list(mult = 1), size = 0.4) +
+  scale_y_continuous(breaks = seq(0, 100, by = 20),
+                     limits = c(0, 100)) + 
+  scale_fill_manual(values = c("#d175b8", "#8fd175")) +
+  geom_label(data = N_overlap_anno,
+             aes(x = species, y = mean + 15, label = label), 
+             size = 1.5, label.padding = unit(0.15, "lines"), label.size = 0.1,
+             inherit.aes = FALSE) + 
+  labs(title = "N protein colocalisation",
+       x = "", 
+       y = "% of molecules") +
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  annotate(geom = "text", x = 1.5, y = 90, label = stat_anno, size = 2, colour = "gray10") +
+  coord_flip() -> plot2
+
+# patchwork
+plot1 + plot2
+
+pdf("./Plots/N-protein_gRNA_overlap.pdf",
+    width = 11.1/2.54, height = 4.4/2.54)
+print(plot1 + plot2)
+dev.off()
+
+```
+
+
+# J2 comparison with smFISH
+## J2 smFISH comparison data
+```{r}
+# Import data 
+dsRNA_infection <- read_csv("./Data/Figure2/p-infection_J2_positive.csv") %>%
+  mutate(Time = case_when(condition == "MOCK" ~ "Mock",
+                          TRUE ~ Time))
+
+smFISH_infection <- read_csv("./Data/Figure2/p-infection_smFISH_positive_cells.csv") %>%
+  mutate(Time = case_when(condition == "MOCK" ~ "Mock",
+                          TRUE ~ Time))
+
+
+dsRNA_intensity <- read_csv("./Data/Figure2/Quantification_J2_intensity.csv") %>%
+  mutate(time.adj = as.character(time.adj)) %>%
+  mutate(hours_post_infection = case_when(condition == "INF" ~ paste0(time.adj, "hpi"),
+                                          condition == "MOCK" ~ "Mock"))
+
+smFISH_count <- read_csv("./Data/Figure2/Quantification_smFISH_count.csv") %>%
+  mutate(time.adj = as.character(time.adj)) %>%
+  mutate(hours_post_infection = case_when(condition == "INF" ~ paste0(time.adj, "hpi"),
+                                          condition == "MOCK" ~ "Mock"))
+```
+
+
+## Comparison plots
+```{r}
+# * * * * Plots
+dsRNA_infection %>%
+  mutate(Time = as_factor(Time)) %>%
+  mutate(Time = fct_relevel(Time, c("Mock", "2hpi", "6hpi"))) %>%
+  ggplot(aes(x = Time, y = p.infected, fill = Time)) +
+  geom_bar(stat = "summary", width = 0.75) +
+  geom_linerange(stat = "summary", fun.data = "mean_sdl", 
+                 fun.args = list(mult = 1), size = 0.4) +
+  scale_y_continuous(breaks = seq(0, 100, by = 20),
+                     limits = c(0, 100)) + 
+  scale_fill_manual(values = c("#d175b8", "#9c4c85","#6a2656")) +
+  labs(title = "dsRNA (J2)",
+       x = "Hours post infection", 
+       y = "% cells above 95% percentile \n Mock fluorescence") +
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> p1
+
+smFISH_infection %>%
+  mutate(Time = as_factor(Time)) %>%
+  mutate(Time = fct_relevel(Time, c("Mock", "2hpi", "6hpi"))) %>%
+  ggplot(aes(x = Time, y = p.infected, fill = Time)) +
+  geom_bar(stat = "summary", width = 0.75) +
+  geom_linerange(stat = "summary", fun.data = "mean_sdl", 
+                 fun.args = list(mult = 1), size = 0.4) +
+  scale_y_continuous(breaks = seq(0, 100, by = 20),
+                     limits = c(0, 100)) + 
+  scale_fill_manual(values = c("#8fd175", "#659e58","#204121")) +
+  labs(title = "smFISH gRNA",
+       x = "Hours post infection", 
+       y = "% fluorescence positive cells") +
+  theme_classic(base_size = 7) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> p2
+
+dsRNA_intensity %>%
+  ggplot(aes(x = factor(hours_post_infection, levels = c("Mock", "2hpi", "6hpi")), 
+             y = dsRNA_density, colour = hours_post_infection)) +
+  geom_quasirandom(width = 0.4, size = 0.25, alpha = 0.5) +
+  geom_hline(yintercept = 1, alpha = 0.1, size = 0.25) +
+  scale_y_continuous(limits = c(0, 7)) +
+  # scale_y_log10(limits = c(0.4, 1e2),
+  #               labels = trans_format("log10", math_format(10^.x))) +
+  scale_colour_manual(values = c("#9c4c85","#6a2656", "#d175b8")) +
+  labs(title = "J2 intensity", 
+       x = "Hours post infection",
+       y = "Normalised fluorescence density") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.title.x = element_blank(),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5)) -> p3
+
+smFISH_count %>%
+  mutate(total_count = total_count + 1) %>%
+  ggplot(aes(x = factor(hours_post_infection, levels = c("Mock", "2hpi", "6hpi")), 
+             y = total_count, colour = hours_post_infection)) +
+  geom_quasirandom(width = 0.4, size = 0.25, alpha = 0.25) +
+  geom_hline(yintercept = 1, alpha = 0.1, size = 0.25) +
+  scale_y_log10(limits = c(1, 1e5),
+                labels = trans_format("log10", math_format(10^.x))) +
+  scale_colour_manual(values = c("#659e58","#204121", "#8fd175")) +
+  labs(title = "smFISH gRNA count", 
+       x = "Hours post infection",
+       y = "RNA count + 1 (log10)") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.title.x = element_blank(),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5)) -> p4
+
+# Patchwork
+(p1 + p2) / (p3 + p4)
+
+# Export 
+pdf("./Plots/dsRNA-comparison.pdf",
+    width = 8/2.54, height = 8.25/2.54)
+print((p1 + p2) / (p3 + p4))
+dev.off()
+
+```
+
+## Statistics 
+
+### Percentage infection statistics 
+
+```{r}
+# * * * * * J2 statistics 
+
+# Normality
+dsRNA_infection %>%
+  group_by(Time) %>%
+  shapiro_test(p.infected) # normal
+
+# ANOVA
+dsRNA_infection %>%
+  anova_test(p.infected ~ Time) # significant
+
+# Tukey HSD
+dsRNA_infection %>%
+  tukey_hsd(p.infected ~ Time)
+
+# * * * * * smFISH statistics
+
+# Normality
+smFISH_infection %>%
+  group_by(Time) %>%
+  shapiro_test(p.infected) # Not normal
+
+# Kruskal
+smFISH_infection %>%
+  kruskal_test(p.infected ~ Time) # significant
+
+# Dunn
+smFISH_infection %>%
+  dunn_test(p.infected ~ Time)
+
+
+```
+
+
+### Quantification statistics 
+
+```{r}
+# * * * * *  J2 statistics
+
+# Normality
+dsRNA_intensity %>%
+  group_by(hours_post_infection, repeat_exp) %>%
+  summarise(mean = mean(dsRNA_density),
+            median = median(dsRNA_density)) %>% ungroup() %>%
+  group_by(hours_post_infection) %>%
+  shapiro_test(mean) # Normal
+
+# ANOVA
+dsRNA_intensity %>%
+  group_by(hours_post_infection, repeat_exp) %>%
+  summarise(mean = mean(dsRNA_density),
+            median = median(dsRNA_density)) %>% ungroup() %>%
+  anova_test(mean ~ hours_post_infection) # Not significant 
+
+
+# * * * * * smFISH statistics 
+
+# Normality 
+smFISH_count %>%
+  filter(hours_post_infection != "Mock") %>%
+  mutate(total_count_log = log10(total_count + 1)) %>%
+  group_by(hours_post_infection, repeat_exp) %>%
+  summarise(mean = mean(total_count_log),
+            median = median(total_count_log)) %>% ungroup() %>%
+  group_by(hours_post_infection) %>%
+  shapiro_test(mean) # Normal 
+
+# ANOVA
+smFISH_count %>%
+  mutate(total_count_log = log10(total_count + 1)) %>%
+  group_by(hours_post_infection, repeat_exp) %>%
+  summarise(mean = mean(total_count_log),
+            median = median(total_count_log)) %>% ungroup() %>%
+  anova_test(mean ~ hours_post_infection) # Significant 
+
+# Tukey HSD
+smFISH_count %>%
+  mutate(total_count_log = log10(total_count + 1)) %>%
+  group_by(hours_post_infection, repeat_exp) %>%
+  summarise(mean = mean(total_count_log),
+            median = median(total_count_log)) %>% ungroup() %>%
+  tukey_hsd(mean ~ hours_post_infection,
+            p.adjust.method = "holm")
+
+smFISH_count %>%
+  mutate(total_count_log = log10(total_count + 1)) %>%
+  group_by(hours_post_infection, repeat_exp) %>%
+  summarise(mean = mean(total_count_log),
+            median = median(total_count_log)) %>% ungroup() %>%
+  t_test(mean ~ hours_post_infection)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

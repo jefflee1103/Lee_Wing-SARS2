@@ -1,0 +1,378 @@
+---
+title: "CoV-FISH-MS_Figure6"
+author: "Jeff Lee"
+date: "24/03/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# ENVIRONMENT
+```{r}
+library(tidyverse)
+library(ggbeeswarm)
+library(hrbrthemes)
+library(patchwork)
+library(scales)
+library(rstatix)
+```
+
+# A549-ACE2 smFISH 
+## A549 smFISH intensity INF plot
+```{r}
+# * * * * * Import data
+FACS_df <- read_csv("./Data/Figure6/A549-ACE2_smFISH_overview_intensity_full.csv") %>%
+  filter(condition != "RDV") %>%
+  mutate(time = case_when(
+    time == "02h" ~ "2 hpi",
+    time == "08h" ~ "8 hpi",
+    time == "24h" ~ "24 hpi"
+  )) %>%
+  mutate(Virus = case_when(Virus == "B1.1.7" ~ "B.1.1.7",
+                           TRUE ~ Virus)) %>%
+  mutate(Virus = fct_relevel(Virus, c("Victoria", "B.1.1.7", "Mock"))) %>%
+  mutate(time = fct_relevel(time, c("2 hpi", "8 hpi", "24 hpi"))) %>%
+  arrange(Virus)
+
+# * * * * * FACS plot
+# Make annotation df
+FACS_df_summary <- FACS_df %>% 
+  group_by(time, Virus, condition) %>%
+  summarise(Ch3.pool        = mean(Ch3.mean),
+            Ch4.pool        = mean(Ch4.mean),
+            p.superinfected = sum(superinfected)/n() * 100,
+            cell.count      = n()) %>% 
+  ungroup() %>%
+  mutate(time = fct_relevel(time, c("2 hpi", "8 hpi", "24 hpi")))
+
+A549_anno <- FACS_df_summary %>%
+  mutate(y.pos = case_when(
+    Virus == "Victoria" ~ 8000,
+    Virus == "B.1.1.7" ~ 5000,
+    Virus == "Mock" ~ 3000)) %>%
+  mutate(p.superinfected = as.character(round(p.superinfected, 2))) %>%
+  mutate(p.superinfected = paste0(p.superinfected, "%")) %>%
+  mutate(Virus = fct_relevel(Virus, c("Victoria", "B.1.1.7", "Mock"))) %>%
+  mutate(condition = fct_rev(condition))
+
+# Plot
+FACS_df %>%
+  ggplot(aes(x = Ch3.mean, y = Ch4.mean, colour = Virus, alpha = Virus)) +
+  geom_point(shape = 21, size = 0.6, stroke = 0.2) +
+  geom_vline(xintercept = 280, size = 0.5, alpha = 0.5, linetype = "dashed", colour = "gray50") +
+  labs(title    = "smFISH intensity per cell",
+       x        = "ORF-N smFISH intensity (Log)",
+       y        = "ORF1a smFISH intensity (Log)") + 
+  scale_alpha_manual(values = c(0.4, 0.4, 0.05)) +
+  scale_x_log10(limits = c(1e2, 1e4),
+                labels = trans_format("log10", math_format(10^.x))) +
+  scale_y_log10(limits = c(1e2, 1e4),
+                labels = trans_format("log10", math_format(10^.x))) +
+  scale_colour_manual(values = c("#f9ab38", "#5672be", "#d18975")) +
+  facet_wrap(~ time) +
+  theme_minimal(base_size = 7) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 8),
+        legend.position  = "bottom",
+        legend.title = element_blank()) +
+  geom_text(data = (A549_anno),
+            aes(x = 350, y = y.pos, label = p.superinfected), 
+            hjust = 0, show.legend = FALSE, size = 1.75, alpha = 1) +
+  guides(colour = guide_legend(override.aes = list(size = 2, alpha = 0.75, stroke = 0.6))) -> plot2
+
+plot2
+
+pdf("./Plots/A549_FACS.pdf",
+    width = 9.5/2.54, height = 5.5/2.54)
+print(plot2)
+dev.off()
+
+```
+
+## Percentage infection & viral entry plot 
+```{r}
+# * * * * * % infection
+# Prepare data
+p_infection <- read_csv("./Data/Figure6/A549-ACE2_variant_pinfection.csv") %>%
+  mutate(Virus = case_when(Virus == "B1.1.7" ~ "B.1.1.7",
+                           TRUE ~ Virus)) %>%
+  mutate(Virus = fct_rev(Virus))
+  
+
+# Statistics
+p_infection %>% group_by(Virus) %>% shapiro_test(p_infection) # Not normal
+p_infection %>% wilcox_test(p_infection ~ Virus) %>% pull(p) -> pinf_pval
+pinf_pval_anno <- paste0("p=", pinf_pval)
+
+# * * * * * Viral entry
+# Prepare data 
+entry <- read_csv("./Data/Figure6/A549-ACE2_smFISH_2h.csv") %>%
+  mutate(Virus = case_when(Virus == "B1.1.7" ~ "B.1.1.7",
+                           TRUE ~ Virus)) %>%
+  mutate(Virus = fct_rev(Virus))
+
+# Statistics 
+entry %>% group_by(Virus) %>% shapiro_test(total_vRNAs) # Not normal
+entry %>% wilcox_test(total_vRNAs ~ Virus) %>% pull(p) -> entry_pval
+entry_pval_anno <- paste0("p=", entry_pval)
+
+# Annotation
+entry_anno <- entry %>% group_by(Virus) %>% 
+  summarise(mean = mean(total_vRNAs)) %>% 
+  ungroup() %>%
+  mutate(mean = round(mean, 1))
+
+
+# * * * * *  Plots
+# % infection plot
+# p_infection %>%
+#   ggplot(aes(x = Virus, y = p_infection, fill = Virus)) +
+#   geom_bar(stat = "summary",
+#            width = 0.6, alpha = 0.8) +
+#   geom_linerange(stat = "summary", fun.data = "mean_sdl", fun.args = list(mult = 1),
+#                  size = 0.5) +
+#   scale_fill_manual(values = c("#f9ab38", "#5672be")) + 
+#   labs(title = "% infection (2hpi)",
+#        x = "",
+#        y = "% cells per image") + 
+#   theme_classic(base_size = 7) +
+#   theme(plot.title       = element_text(hjust = 0.5),
+#         legend.title     = element_blank(),
+#         legend.key.size  = unit(0.2, "cm"),
+#         legend.position  = "none", 
+#         axis.line        = element_blank(), 
+#         panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+#         strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+#   annotate(geom = "text", label = pinf_pval_anno, size = 2, alpha = 0.75,
+#            x = 1.5, y = 100) -> p1_2hpi
+
+p_infection %>%
+  ggplot(aes(x = Virus, y = p_infection, fill = Virus)) +
+  geom_bar(stat = "summary",
+           width = 0.6, alpha = 0.8) +
+  geom_linerange(stat = "summary", fun.data = "mean_sdl", fun.args = list(mult = 1),
+                 size = 0.5) +
+  scale_fill_manual(values = c("#f9ab38", "#5672be")) + 
+  labs(title = "% infection",
+       x = "",
+       y = "% of cells (2 hpi)") + 
+  theme_minimal(base_size = 7) +
+  theme(plot.title       = element_text(hjust = 0.5),
+        legend.title     = element_blank(),
+        legend.key.size  = unit(0.2, "cm"),
+        legend.position  = "none") +
+  annotate(geom = "text", label = pinf_pval_anno, size = 2, alpha = 0.75,
+           x = 1.5, y = 100) -> p1_2hpi
+
+# Viral entry plot
+# entry %>%
+#   ggplot(aes(x = Virus, y = total_vRNAs, colour = Virus)) +
+#   geom_beeswarm(cex = 1.5, alpha = 0.15, size = 1, stroke = 0,
+#                 priority = "random") +
+#   geom_pointrange(stat = "summary", fun.data = "mean_sdl", fun.args = list(mult = 0.5),
+#                   size = 0.3, alpha = 1) +
+#   geom_label(data = entry_anno, 
+#              aes(x = Virus, y = 125, label = mean), 
+#              inherit.aes = FALSE,label.padding = unit(0.1, "lines"), size = 2) +
+#   #scale_y_continuous(limits = c(0, 200)) +
+#   scale_colour_manual(values = c("#f9ab38", "#5672be")) +
+#   labs(title = "Viral entry (2hpi)",
+#        x = "",
+#        y = "(+)ve gRNA total count") +
+#   theme_classic(base_size = 7) +
+#   theme(plot.title = element_text(hjust = 0.5),
+#         legend.position = "none",
+#         legend.title = element_blank(),
+#         legend.key.size = unit(0.3, "cm"), 
+#         axis.line        = element_blank(), 
+#         panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+#         strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+#   annotate(geom = "text", label = entry_pval_anno, size = 2, alpha = 0.75,
+#            x = 1.5, y = 160) -> p2_2hpi
+
+entry %>%
+  ggplot(aes(x = Virus, y = total_vRNAs, colour = Virus)) +
+  geom_beeswarm(cex = 1.5, alpha = 0.15, size = 1, stroke = 0,
+                priority = "random") +
+  geom_pointrange(stat = "summary", fun.data = "mean_sdl", fun.args = list(mult = 0.5),
+                  size = 0.3, alpha = 1) +
+  geom_label(data = entry_anno, 
+             aes(x = Virus, y = 125, label = mean), 
+             inherit.aes = FALSE,label.padding = unit(0.1, "lines"), size = 2) +
+  #scale_y_continuous(limits = c(0, 200)) +
+  scale_colour_manual(values = c("#f9ab38", "#5672be")) +
+  labs(title = "Viral entry",
+       x = "",
+       y = "gRNA total count (2 hpi)") +
+  theme_minimal(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none",
+        legend.title = element_blank(),
+        legend.key.size = unit(0.3, "cm")) +
+  annotate(geom = "text", label = entry_pval_anno, size = 2, alpha = 0.75,
+           x = 1.5, y = 160) -> p2_2hpi
+
+# Patchwork
+p1_2hpi + p2_2hpi
+
+# Export
+pdf("./Plots/A549_2hpi_stat.pdf",
+    width = 7/2.54, height = 4.2/2.54)
+print(p1_2hpi + p2_2hpi)
+dev.off()
+
+```
+
+## Percentage highly permissive
+```{r}
+# Prepare dataframe
+FACS_hperm_summary <- read_csv("./Data/Figure6/A549-ACE2_smFISH_overview_highly_permissive.csv") %>%
+  mutate(time = fct_rev(time)) %>%
+  mutate(Virus = case_when(Virus == "B1.1.7" ~ "B.1.1.7",
+                           TRUE ~ Virus))
+
+# Statistics
+FACS_hperm_summary %>% shapiro_test(p.superinfected) # Normal 
+FACS_hperm_summary %>% group_by(time) %>% t_test(p.superinfected ~ Virus)
+
+FACS_hperm_anno <- FACS_hperm_summary %>% 
+  group_by(time) %>% t_test(p.superinfected ~ Virus) %>% add_significance() %>% ungroup() %>%
+  mutate(label = paste0(p.signif, "\np=", p)) %>%
+  mutate(y_pos = case_when(
+    time == "8 hpi" ~ 8,
+    time == "24 hpi" ~ 24))
+
+# Plot 
+FACS_hperm_summary %>% 
+  mutate(Virus = fct_rev(Virus)) %>%
+  ggplot() +
+  geom_bar(aes(x = time, y = p.superinfected, fill = Virus),
+           stat = "summary", fun.data = "mean_se",
+           width = 0.65, position = position_dodge(0.8), alpha = 0.8) +
+  geom_linerange(aes(x = time, y = p.superinfected, fill = Virus),
+                 stat = "summary", fun.data = "mean_sdl", 
+                 fun.args = list(mult = 1), size = 0.25,
+                 position = position_dodge(0.8)) +
+  geom_text(data = FACS_hperm_anno,
+            aes(x = time, y = y_pos, label = label), 
+            size = 2, alpha = 0.75) +
+  scale_y_continuous(limits = c(0, 25)) +
+  scale_fill_manual(values = c("#f9ab38", "#5672be")) + 
+  labs(title = "% Super-permissive cells",
+       x = "",
+       y = "% cells per field of view") +
+  theme_minimal(base_size = 7) +
+  theme(plot.title       = element_text(hjust = 0.5, size = 8),
+        legend.title     = element_blank(),
+        legend.position  = "bottom",
+        legend.key.size  = unit(0.2, "cm")) -> plot_higp
+
+plot_higp
+
+# Export
+pdf("./Plots/A549_highly-permissive.pdf",
+    width = 5/2.54, height = 6.5/2.54)
+print(plot_higp)
+dev.off()
+
+
+
+```
+
+
+# RNA-seq
+
+## sgRNA/gRNA ratio
+
+```{r}
+ratio <- read_tsv("./Data/Figure6/subgenomic-to-genomic-ratio.tsv") %>%
+  rename("time" = hpi) %>%
+  mutate(time = case_when(
+    time == "2h" ~ "2hpi",
+    time == "8h" ~ "8hpi",
+    time == "24h" ~ "24hpi"
+  )) %>%
+  mutate(strain = case_when(
+    strain == "B117" ~ "B.1.1.7",
+    strain == "victoria" ~ "Victoria"
+  ))
+
+## Statistics
+ratio %>%
+  group_by(time) %>%
+  shapiro_test(sub_to_genomic_ratio)
+
+ratio %>%
+  group_by(time) %>%
+  t_test(sub_to_genomic_ratio ~ strain) %>%
+  add_significance() %>%
+  mutate(label = paste0(p.signif, "\n", "p=", signif(p, 2))) -> ratio_anno
+
+ratio %>%
+  filter(strain == "B.1.1.7") %>%
+  tukey_hsd(sub_to_genomic_ratio ~ time)
+
+## Plot
+ratio %>%
+  mutate(time = fct_relevel(time, c("2hpi", "8hpi", "24hpi"))) %>%
+  mutate(strain = fct_rev(strain)) %>%
+  ggplot(aes(x = time, y = sub_to_genomic_ratio, colour = strain)) +
+  geom_point(position = position_jitterdodge()) +
+  geom_text(data = ratio_anno, 
+            aes(x = time, y = 10, label = label), 
+            size = 1.5, inherit.aes = FALSE) +
+  scale_colour_manual(values = c("#f9ab38", "#5672be")) + 
+  labs(title = "sgRNA/gRNA ratio",
+       x = "",
+       y = "Ratio") +
+  theme_classic(base_size = 7) +
+  theme(plot.title       = element_text(hjust = 0.5),
+        legend.title     = element_blank(),
+        legend.position  = "bottom",
+        axis.line        = element_blank(),
+        panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> sgRNA_ratio
+
+ratio %>%
+  mutate(time = fct_relevel(time, c("2hpi", "8hpi", "24hpi"))) %>%
+  mutate(strain = fct_rev(strain)) %>%
+  ggplot(aes(x = time, y = sub_to_genomic_ratio, colour = strain)) +
+  geom_quasirandom(width = 0.2, size = 1.5, alpha = 0.4) +
+  geom_line(aes(group = strain),
+            stat = "summary", alpha = 0.4) +
+  geom_text(data = ratio_anno, 
+            aes(x = time, y = 10, label = label), 
+            size = 2, inherit.aes = FALSE) +
+  scale_colour_manual(values = c("#00BFC4", "#F8766D")) + 
+  labs(title = "sgRNA/gRNA ratio",
+       x = "",
+       y = "Ratio") +
+  theme_minimal(base_size = 7) +
+  theme(
+        legend.title     = element_blank(),
+        legend.position  = "none",
+        # axis.line        = element_blank(),
+        # panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+        # strip.background = element_rect(colour = "black", fill = NA, size = 0.5),
+        legend.key.size  = unit(0.2, "cm")) -> sgRNA_ratio
+
+pdf("./Plots/Seq_sgRNA_ratio.pdf",
+    width = 7/2.54, height = 8/2.54)
+print(sgRNA_ratio)
+dev.off()
+
+  
+
+
+```
+
+
+
+
+
+
+
+
+
+
+

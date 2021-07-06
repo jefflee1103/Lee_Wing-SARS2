@@ -1,0 +1,701 @@
+---
+title: "CoV-FISH-MS_Figure5"
+author: "Jeff Lee"
+date: "24/03/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# ENVIRONMENT
+
+```{r}
+library(tidyverse)
+library(ggbeeswarm)
+library(hrbrthemes)
+library(patchwork)
+library(scales)
+library(rstatix)
+library(ggridges)
+```
+
+# VICTORIA vs. B.1.1.7 smFISH
+
+## Infection rate and viral entry
+```{r}
+# * * * * * % infection
+# Prepare data
+RNA_df <- read_csv("./Data/Figure5/Data_summary_threshold_150.csv") %>%
+  dplyr::select(c("File" = file_name, time, "Virus" = strain, "condition" = treatment, everything(), -X1)) %>%
+  mutate(Virus = case_when(
+    Virus == "B117" ~ "B.1.1.7",
+    Virus == "Vic" ~ "Victoria",
+    Virus == "None" ~ "Mock")) %>%
+  mutate(condition = case_when(
+    condition == "INF" ~ "Untreated",
+    TRUE ~ condition)) %>%
+  mutate(time = case_when(
+    time == 2 ~ "2 hpi",
+    time == 6 ~ "6 hpi",
+    time == 8 ~ "8 hpi",
+    time == 24 ~ "24 hpi")) %>%
+  mutate(repeat_exp = case_when(
+    str_detect(File, "R1") ~ "R1",
+    str_detect(File, "R2") ~ "R2",
+    str_detect(File, "R3") ~ "R3"
+  ))
+
+p_infection <- RNA_df %>% 
+  filter(Virus != "Mock" & condition == "Untreated" & time == "2 hpi") %>%
+  mutate(File = str_replace(File, "cell_[:alnum:]", "")) %>%
+  group_by(File, Virus, repeat_exp) %>%
+  summarise(n_cell = n(),
+            n_inf = sum(ch4_total_vRNAs > 4),
+            p_inf = sum(ch4_total_vRNAs > 4)/n()*100) %>%
+  ungroup() %>%
+  mutate(Virus = fct_rev(Virus)) %>%
+  group_by(Virus, repeat_exp) %>% summarise(mean_p_inf = mean(p_inf)) %>% 
+  ungroup()
+
+# Statistics
+p_infection %>% group_by(Virus) %>% shapiro_test(mean_p_inf)
+p_inf <- p_infection %>% t_test(mean_p_inf ~ Virus) %>% pull(p)
+p_anno_inf <- paste0("p=", p_inf)
+
+# * * * * * Viral entry
+# Prepare data 
+RNA_df_2hpi <- RNA_df %>% filter(time == "2 hpi") %>% filter(Virus != "Mock") %>%
+  filter(ch4_total_vRNAs > 1) %>%
+  mutate(Virus = fct_rev(Virus)) %>%
+  mutate(colour_factor = paste0(Virus, "-", repeat_exp))
+
+# Statistics 
+RNA_df_2hpi %>% group_by(Virus, repeat_exp) %>% summarise(mean = mean(ch4_total_vRNAs)) %>%
+  shapiro_test(mean)
+RNA_df_2hpi %>% group_by(Virus, repeat_exp) %>% summarise(mean = mean(ch4_total_vRNAs)) %>%
+  ungroup() %>% t_test(mean ~ Virus) %>% pull(p) -> p_entry
+
+# Annotation
+RNA_df_2hpi_anno <- RNA_df_2hpi %>% group_by(Virus) %>% 
+  summarise(mean = mean(ch4_total_vRNAs)) %>% 
+  ungroup() %>%
+  mutate(mean = round(mean, 1))
+p_anno_entry <- paste0("p=", p_entry)
+
+
+# * * * * *  Plots
+# % infection plot
+p_infection %>%
+  ggplot(aes(x = Virus, y = mean_p_inf, fill = Virus)) +
+  geom_bar(stat = "summary",
+           width = 0.5) +
+  geom_linerange(stat = "summary", fun.data = "mean_sdl", fun.args = list(mult = 1),
+                 size = 0.5) +
+  scale_fill_manual(values = c("#f9ab38", "#5672be")) + 
+  labs(title = "% infected cells",
+       x = "",
+       y = "% cells per image") + 
+  theme_classic(base_size = 7) +
+  theme(plot.title       = element_text(hjust = 0.5),
+        legend.title     = element_blank(),
+        legend.key.size  = unit(0.2, "cm"),
+        legend.position  = "none", 
+        axis.line        = element_blank(), 
+        panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  annotate(geom = "text", label = p_anno_inf, size = 2, alpha = 0.75,
+           x = 1.5, y = 100) -> p1_2hpi
+
+# Viral entry plot
+RNA_df_2hpi %>%
+  ggplot(aes(x = Virus, y = ch4_total_vRNAs, colour = colour_factor)) +
+  geom_beeswarm(cex = 0.8, alpha = 0.15, size = 0.75, stroke = 0,
+                priority = "random") +
+  geom_point(stat = "summary", position = position_dodge(width = 0.1), 
+             size = 1.5, alpha = 1) +
+  geom_label(data = RNA_df_2hpi_anno, 
+             aes(x = Virus, y = 150, label = mean), 
+             inherit.aes = FALSE,label.padding = unit(0.1, "lines"), size = 2) +
+  scale_y_continuous(limits = c(0, 200)) +
+  scale_colour_manual(
+    values = c("#5672be", "#2f416f", "#0d152a", "#f9ab38", "#c39050", "#8b7660")) +
+  labs(title = "Viral entry (2hpi)",
+       x = "",
+       y = "(+)ve gRNA total count") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        legend.position = "none",
+        axis.line        = element_blank(), 
+        panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  annotate(geom = "text", label = p_anno_entry, size = 2, alpha = 0.75,
+           x = 1.5, y = 190) -> p2_2hpi
+
+# Patchwork
+(p2_2hpi + p1_2hpi)
+
+## Export
+pdf("./Plots/Vero-variant-infection-entry.pdf",
+    width = 8.5/2.54, height = 4.2/2.54)
+print((p2_2hpi + p1_2hpi))
+dev.off()
+
+
+```
+
+## Total RNA
+
+```{r}
+# * * * * * Data
+
+RNA_df_total <- read_csv("./Data/Figure5/CF10_JL_20210629.csv") %>%
+  mutate(gRNA_log = log10(total_vRNAs_gRNA))
+
+RNA_df_total %>%
+  group_by(time, strain) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  arrange(strain)
+
+# * * * * * Statistics 
+
+## 2 hpi
+RNA_df_total %>% group_by(time, condition, strain, repeat_exp) %>%
+  filter(time == "2hpi") %>%
+  filter(total_vRNAs_gRNA > 0) %>%
+  summarise(gRNA_mean = mean(gRNA_log, na.rm = TRUE)) %>% ungroup() %>%
+  group_by(time, condition, strain) %>%
+  shapiro_test(gRNA_mean) # normal
+
+RNA_df_total %>% group_by(time, condition, strain, repeat_exp) %>%
+  filter(time == "2hpi") %>%
+  filter(total_vRNAs_gRNA > 0) %>%
+  summarise(gRNA_mean = mean(gRNA_log, na.rm = TRUE)) %>% ungroup() %>%
+  group_by(time, condition) %>%
+  t_test(gRNA_mean ~ strain)
+
+## 6-8 hpi: KS statistics test function
+do_ks_test <- function(time, condition, test){
+  vic <- RNA_df_total[RNA_df_total$time == time & RNA_df_total$condition == condition, ] %>% filter(strain == "Victoria") %>%
+    pull(test)
+  b17 <- RNA_df_total[RNA_df_total$time == time & RNA_df_total$condition == condition, ] %>% filter(strain == "B.1.1.7") %>%
+    pull(test)
+  ks.test(vic, b17, alternative = "two.sided") %>% tidy() %>% add_significance()
+}
+
+## Do tests
+do_ks_test(time = "6hpi", condition = "Untreated", test = "total_vRNAs_gRNA")
+do_ks_test(time = "8hpi", condition = "Untreated", test = "total_vRNAs_gRNA")
+do_ks_test(time = "6hpi", condition = "RDV", test = "total_vRNAs_gRNA")
+do_ks_test(time = "8hpi", condition = "RDV", test = "total_vRNAs_gRNA")
+
+# * * * * * Plot
+set.seed(13)
+rows <- sample(nrow(RNA_df_total))
+RNA_df_total_plot <- RNA_df_total[rows, ]
+
+RNA_df_total_plot %>%
+  mutate(condition = fct_rev(condition)) %>%
+  mutate(strain = fct_rev(strain)) %>%
+  ggplot(aes(x = total_vRNAs_sgRNA, y = total_vRNAs_gRNA, colour = strain, alpha = strain)) +
+  geom_point(size = 1, stroke = 0) +
+  geom_vline(xintercept = 100000, linetype = "dotted", alpha = 0.5, size = 0.5) +
+  geom_hline(yintercept = 100000, linetype = "dotted", alpha = 0.5, size = 0.5) +
+  scale_colour_manual(values = c("#f9ab38", "#5672be")) +
+  scale_alpha_manual(values = c(0.8, 0.5)) +
+  scale_x_log10(limits = c(1e0, 1e7),
+                labels = trans_format("log10", math_format(10^.x))) +
+  scale_y_log10(limits = c(1e0, 1e7),
+                labels = trans_format("log10", math_format(10^.x))) +
+  labs(title = "Total viral RNA count per cell",
+       x = "sgRNA count (Log)",
+       y = "gRNA count (Log)") + 
+  facet_grid(condition ~ time) + 
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position  = c(0.07, 0.9),
+        legend.background = element_blank(),
+        legend.direction = "vertical",
+        legend.title = element_blank(),
+        axis.line        = element_blank(), 
+        panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> FACS
+
+## Export
+pdf("./Plots/Vero-variant_FACS_plot.pdf",
+    width = 11/2.54, height = 7.9/2.54)
+print(FACS)
+dev.off()
+
+
+```
+
+## Viral factory number
+
+```{r}
+## Stat
+RNA_df_total %>%
+  group_by(condition, time, strain) %>%
+  shapiro_test(repSites_gRNA)
+
+RNA_df_total %>%
+  group_by(condition, time) %>%
+  wilcox_test(repSites_gRNA ~ strain) %>% add_significance()
+
+
+## Plot
+RNA_df_total %>%
+  mutate(colour_arg = paste0(strain, " + " , condition)) %>%
+  mutate(colour_arg = fct_rev(colour_arg)) %>%
+  mutate(condition = fct_rev(condition)) %>%
+  ggplot(aes(x = time, y = repSites_gRNA, colour = colour_arg)) +
+  geom_pointrange(stat = "summary", fun.data = "mean_se", fun.args = list(mult = 1),
+                  size = 0.5) +
+  geom_line(aes(group = strain), stat = "summary",
+            size = 0.5, alpha = 0.5) +
+  scale_colour_manual(values = c("#f9ab38", "#f9d275", "#5672be", "#b4dded")) + 
+  labs(title = "Number of viral factories per cell",
+       x = "",
+       y = "Count") +
+  theme_classic(base_size = 7) + 
+  facet_wrap(~condition) + 
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        legend.position = c(0.75, 0.8),
+        legend.background = element_blank(),
+        legend.key.size = unit(0.3 ,"cm"),  
+        axis.line        = element_blank(), 
+        panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> vfactory
+
+vfactory
+
+pdf("./Plots/Vero-variant_vfactory.pdf",
+    width = 7.95/2.54, height = 4.6/2.54)
+print(vfactory)
+dev.off()
+
+
+```
+
+## Viral factory content
+
+```{r}
+## Stat
+RNA_df_total %>%
+  group_by(time, condition) %>%
+  wilcox_test(content ~ strain) %>% add_significance() %>%
+  arrange(desc(condition), time)
+
+## Plot
+RNA_df_total %>%
+  mutate(condition = fct_rev(condition)) %>%
+  mutate(strain = fct_rev(strain)) %>%
+  mutate(time = fct_rev(time)) %>%
+  ggplot(aes(x = content, y = time, colour = strain, fill = strain)) +
+  geom_density_ridges(aes(height = stat(ndensity)), 
+                      alpha = 0.4, size = 0.3, scale = 1.3, bandwidth = 0.16,
+                      jittered_points = TRUE, point_shape = "|", point_size = 2.5,
+                      position = position_points_jitter(height = 0)) +
+  scale_fill_manual(values = c("#f9ab38", "#5672be")) + 
+  scale_colour_manual(values = c("#f9ab38", "#5672be")) +
+  scale_x_log10(labels = trans_format("log10", math_format(10^.x))) +
+  labs(title = "Viral factory content",
+       x = "Number of gRNA in viral factories per cell (Log)",
+       y = "Density (at hours post infection)") +
+  facet_wrap(~ condition) +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        legend.background = element_blank(),
+        legend.position = c(0.25, 0.07),
+        legend.direction = "horizontal",
+        legend.key.size = unit(0.3 ,"cm"),  
+        axis.line        = element_blank(), 
+        panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> vf_content
+
+vf_content
+
+pdf("./Plots/Vero-variant_vfactory_content.pdf",
+    width = 11/2.54, height = 6/2.54)
+print(vf_content)
+dev.off()
+
+
+```
+
+## sgRNA ratio - per hpi
+
+```{r}
+## Stat
+RNA_df_total %>%
+  filter(ratio != Inf) %>%
+  group_by(time, condition) %>%
+  wilcox_test(ratio ~ strain) %>% add_significance() %>%
+  arrange(condition, time)
+
+## Plot
+RNA_df_total %>%
+  mutate(strain = fct_rev(strain))  %>%
+  mutate(condition = fct_rev(condition)) %>%
+  ggplot(aes(x = as.factor(time), y = ratio, colour = strain)) +
+  geom_point(position = position_jitterdodge(jitter.width = 0.4, dodge.width = 0.75),
+            size = 0.65, alpha = 0.3, stroke = 0.1) +
+  geom_pointrange(aes(x = as.factor(time), y = ratio, group = strain),
+                  stat = "summary", position = position_dodge(width = 0.75), 
+                  size = 0.3, colour = "gray50",
+                  inherit.aes = FALSE, show.legend = FALSE) +
+  geom_line(aes(group = strain), stat = "summary", size = 0.6, 
+            alpha = 1) +
+  geom_hline(yintercept = 1, linetype = "dashed",
+             size = 0.5, colour = "gray75") + 
+  coord_cartesian(ylim = c(0, 30)) + 
+  labs(title = "sgRNA/gRNA ratio (by hpi)",
+       x = "Hours post infection",
+       y = "sgRNA/gRNA ratio") +
+  scale_colour_manual(values = c("#f9ab38", "#5672be")) + 
+  facet_wrap(~ condition) +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.title = element_blank(),
+        legend.position = c(0.8, 0.8),
+        legend.background = element_blank(),
+        legend.direction = "horizontal",
+        legend.key.size = unit(0.3, "cm"),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  guides(color = guide_legend(override.aes = list(size = 2, alpha = 1))) -> ratio_hpi
+
+
+pdf("./Plots/Vero-variant_ratio-hpi.pdf",
+    width = 8.3/2.54, height = 5.92/2.54)
+print(ratio_hpi)
+dev.off()
+
+```
+
+## sgRNA ratio - by classification
+
+```{r}
+## Data
+RNA_df_rc <- RNA_df_total %>%
+  mutate(classification = case_when(
+    total_vRNAs_gRNA <= 100 ~ "Partially resistant",
+    total_vRNAs_gRNA > 100 & total_vRNAs_gRNA < 100000 ~ "Permissive",
+    total_vRNAs_gRNA >= 100000 ~ "Super-permissive"))
+
+## Stat
+RNA_df_rc %>%
+  group_by(classification, condition) %>%
+  wilcox_test(ratio ~ strain) %>% add_significance() %>%
+  arrange(condition)
+
+## Plot
+RNA_df_rc %>%
+  mutate(classification = fct_relevel(classification, c("Partially resistant", "Permissive", "Super-permissive"))) %>%
+  mutate(strain = fct_rev(strain))  %>%
+  mutate(condition = fct_rev(condition)) %>%
+  ggplot(aes(x = as.factor(classification), y = ratio, colour = strain)) +
+  geom_point(position = position_jitterdodge(jitter.width = 0.5, dodge.width = 0.75),
+            size = 0.8, alpha = 0.3, stroke = 0.1) +
+  geom_pointrange(aes(x = as.factor(classification), y = ratio, group = strain),
+                  stat = "summary", position = position_dodge(width = 0.75), 
+                  size = 0.3, colour = "gray50",
+                  inherit.aes = FALSE, show.legend = FALSE) +
+  geom_hline(yintercept = 1, linetype = "dashed",
+             size = 0.5, colour = "gray75") + 
+  coord_cartesian(ylim = c(0, 30)) + 
+  labs(title = "sgRNA/gRNA ratio by gRNA burden",
+       x = "",
+       y = "sgRNA/gRNA ratio") +
+  scale_colour_manual(values = c("#f9ab38", "#5672be")) + 
+  facet_wrap(~ condition) +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        legend.title = element_blank(),
+        legend.position = c(0.8, 0.8),
+        legend.background = element_blank(),
+        legend.direction = "horizontal",
+        legend.key.size = unit(0.3, "cm"),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  guides(color = guide_legend(override.aes = list(size = 2, alpha = 1))) -> ratio_class
+
+
+pdf("./Plots/Vero-variant_ratio-class.pdf",
+    width = 11/2.54, height = 7/2.54)
+print(ratio_class)
+dev.off()
+```
+
+## Percentage super-permissive
+
+```{r}
+# Import data
+FACS_df <- read_csv("./Data/Figure5/CoV-FISH-10_Vero-overivew-FACS.csv") %>%
+  mutate(time = case_when(
+    time == "02h" ~ "2 hpi",
+    time == "06h" ~ "6 hpi",
+    time == "08h" ~ "8 hpi",
+    time == "24h" ~ "24 hpi"
+  ))
+
+# Create dataframe
+FACS_bar <- FACS_df %>%
+  filter(time == "6 hpi" | time == "8 hpi") %>%
+  group_by(File, time, Virus, condition) %>%
+  summarise(p.superinfected = sum(superinfected)/n() * 100) %>%
+  ungroup()
+
+# Statistics
+FACS_bar %>% group_by(time, Virus, condition) %>% shapiro_test(p.superinfected) # Failed normality
+
+FACS_bar %>% group_by(time, condition) %>% 
+  wilcox_test(p.superinfected ~ Virus, p.adjust.method = "bonferroni") %>% add_significance()
+
+# Plot
+FACS_bar %>% 
+  mutate(Virus = fct_rev(Virus)) %>%
+  mutate(condition = fct_rev(condition)) %>%
+  ggplot(aes(x = time, y = p.superinfected, fill = Virus)) +
+  geom_bar(stat = "summary", fun.data = "mean_se",
+           width = 0.65, position = position_dodge(0.8), alpha = 0.8) +
+  geom_linerange(stat = "summary", fun.data = "mean_se", 
+                 fun.args = list(mult = 1), size = 0.25,
+                 position = position_dodge(0.8)) +
+  scale_y_continuous(limits = c(0, 15)) +
+  scale_fill_manual(values = c("#f9ab38", "#5672be")) + 
+  labs(title = "% Super-permissive",
+       x = "",
+       y = "% cells per field of view") +
+  facet_wrap(~ condition) +
+  theme_classic(base_size = 7) +
+  theme(plot.title       = element_text(hjust = 0.5),
+        legend.title     = element_blank(),
+        legend.position  = c(0.75, 0.85),
+        legend.direction = "horizontal",
+        axis.line        = element_blank(),
+        panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5),
+        legend.key.size  = unit(0.2, "cm")) -> sup_perm_variant
+
+sup_perm_variant
+  
+# Export 
+pdf("./Plots/FACS_Vero_bar-plot.pdf",
+    width = 7.5/2.54, height = 4.5/2.54)
+print(sup_perm_variant)
+dev.off()
+
+```
+
+
+
+
+
+
+# SUPPLEMENTARY
+
+
+
+## Vero FACS-like panel plot
+
+```{r}
+# * * * * * Import data
+FACS_df <- read_csv("./Data/Figure5/CoV-FISH-10_Vero-overivew-FACS.csv") %>%
+  mutate(time = case_when(
+    time == "02h" ~ "2 hpi",
+    time == "06h" ~ "6 hpi",
+    time == "08h" ~ "8 hpi",
+    time == "24h" ~ "24 hpi"
+  ))
+
+# * * * * * FACS plot
+# Make annotation df
+FACS_df_summary <- FACS_df %>% 
+  group_by(time, Virus, condition) %>%
+  summarise(Ch3.pool        = mean(Ch3.mean),
+            Ch4.pool        = mean(Ch4.mean),
+            p.superinfected = sum(superinfected)/n() * 100,
+            cell.count      = n()) %>% 
+  ungroup()
+
+Vero_anno <- FACS_df_summary %>%
+  mutate(y.pos = case_when(
+    Virus == "Victoria" ~ 800,
+    Virus == "B1.1.7" ~ 630,
+    Virus == "Mock" ~ 500)) %>%
+  mutate(p.superinfected = as.character(round(p.superinfected, 2))) %>%
+  mutate(p.superinfected = paste0(p.superinfected, "%")) %>%
+  mutate(Virus = fct_relevel(Virus, c("Victoria", "B1.1.7", "Mock"))) %>%
+  mutate(condition = fct_rev(condition))
+
+# Plot
+FACS_df %>%
+  filter(time != "24 hpi") %>% 
+  mutate(Virus = fct_relevel(Virus, c("Victoria", "B1.1.7", "Mock"))) %>%
+  arrange(Virus) %>%
+  mutate(condition = fct_rev(condition)) %>%
+  ggplot(aes(x = Ch3.mean, y = Ch4.mean, colour = Virus)) +
+  geom_point(shape = 21, size = 0.6, alpha = 0.25, stroke = 0.25) +
+  geom_vline(xintercept = 140, size = 0.1, alpha = 0.5) +
+  labs(title    = "smFISH intensity per cell",
+       x        = "ORF-N smFISH intensity",
+       y        = "gRNA smFISH intensity") + 
+  scale_x_log10(limits = c(1e2, 1e4),
+                labels = trans_format("log10", math_format(10^.x))) +
+  scale_y_log10(limits = c(1e2, 1e3),
+                labels = trans_format("log10", math_format(10^.x)),
+                breaks = c(10^2, 10^2.5, 10^3)
+                ) +
+  scale_colour_manual(values = c("#f9ab38", "#5672be", "#d18975")) +
+  facet_grid(condition ~ time) +
+  theme_classic(base_size = 7) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 8),
+        legend.position  = "bottom",
+        legend.title = element_blank(),
+        axis.line        = element_blank(), 
+        panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  geom_text(data = (Vero_anno %>% 
+                      filter(time != "24 hpi")),
+            aes(x = 200, y = y.pos, label = p.superinfected), 
+            hjust = 0, show.legend = FALSE, size = 1.75) +
+  guides(colour = guide_legend(override.aes = list(size = 2, alpha = 0.75, stroke = 0.6))) -> plot1
+
+plot1
+
+# Export 
+pdf("./Plots/FACS_Vero_Full.pdf",
+    width = 9/2.54, height = 7.4/2.54)
+print(plot1)
+dev.off()
+```
+
+## Bar plot for statistics
+
+```{r}
+# Import data
+FACS_df <- read_csv("./Data/Figure5/CoV-FISH-10_Vero-overivew-FACS.csv") %>%
+  mutate(time = case_when(
+    time == "02h" ~ "2 hpi",
+    time == "06h" ~ "6 hpi",
+    time == "08h" ~ "8 hpi",
+    time == "24h" ~ "24 hpi"
+  ))
+
+# Create dataframe
+FACS_bar <- FACS_df %>%
+  filter(time == "6 hpi" | time == "8 hpi") %>%
+  group_by(File, time, Virus, condition) %>%
+  summarise(p.superinfected = sum(superinfected)/n() * 100) %>%
+  ungroup()
+
+# Statistics
+FACS_bar %>% group_by(time, Virus, condition) %>% shapiro_test(p.superinfected) # Failed normality
+
+FACS_bar %>% group_by(time, condition) %>% 
+  wilcox_test(p.superinfected ~ Virus, p.adjust.method = "bonferroni") %>% add_significance()
+
+# Plot
+FACS_bar %>% 
+  mutate(Virus = fct_rev(Virus)) %>%
+  mutate(condition = fct_rev(condition)) %>%
+  ggplot(aes(x = time, y = p.superinfected, fill = Virus)) +
+  # geom_point(position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.5)) +
+  geom_bar(stat = "summary", fun.data = "mean_se",
+           width = 0.65, position = position_dodge(0.8), alpha = 0.8) +
+  geom_linerange(stat = "summary", fun.data = "mean_sdl", 
+                 fun.args = list(mult = 1), size = 0.25,
+                 position = position_dodge(0.8)) +
+  scale_y_continuous(limits = c(0, 15)) +
+  scale_fill_manual(values = c("#f9ab38", "#5672be")) + 
+  labs(title = "% Highly permissive",
+       x = "",
+       y = "% cells per field of view") +
+  facet_wrap(~ condition, nrow = 2) +
+  theme_classic(base_size = 7) +
+  theme(plot.title       = element_text(hjust = 0.5, size = 8),
+        legend.title     = element_blank(),
+        legend.position  = "bottom",
+        axis.line        = element_blank(),
+        panel.border     = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5),
+        legend.key.size  = unit(0.2, "cm")) -> plot2
+  
+# Export 
+pdf("./Plots/FACS_Vero_bar-plot.pdf",
+    width = 3.5/2.54, height = 6.9/2.54)
+print(plot2)
+dev.off()
+
+
+```
+
+## Vero B.1.1.7 8hpi super-permissive spatial randomness
+
+```{r}
+nndist_B117_Vero <- read_csv("./Data/Figure5/Vero_B117_8h_spatial_nn-distances.csv") %>%
+  dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
+  pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
+  filter(!is.na(nn_distance)) %>%
+  mutate(nn_distance = nn_distance * 0.65)
+
+# Stats and parameters 
+p_value <- nndist_B117_Vero %>% t_test(nn_distance ~ data_type) %>% add_significance() %>% pull(p)
+p_value_label = paste0("p = ", p_value)
+
+observed_mean <- nndist_B117_Vero %>% filter(data_type == "Observed") %>%
+  pull(nn_distance) %>% mean() %>% round(0)
+observed_mean_label = paste0("mean = ", observed_mean, " µm")
+
+random_mean <- nndist_B117_Vero %>% filter(data_type == "Random") %>%
+  pull(nn_distance) %>% mean() %>% round(0)
+random_mean_label = paste0("mean = ", random_mean, " µm")
+
+
+# Plot
+ggplot() +
+  geom_histogram(data = subset(nndist_B117_Vero, data_type == "Observed"),
+                 aes(x = nn_distance, y = stat(ndensity), fill = data_type),
+                 colour = "white", bins = 20, alpha = 1, size = 0.1) +
+  geom_histogram(data = subset(nndist_B117_Vero, data_type == "Random"),
+                 aes(x = nn_distance, y = stat(ndensity), fill = data_type),
+                 bins = 50, alpha = 0.5) +
+  scale_fill_manual(values = c("gray50", "#75b8d1")) + 
+  scale_y_continuous(limits = c(0, 1),
+                     breaks = seq(0, 1, by = 0.2)) +
+  labs(x = "Nearest neighbour \n distance (µm)",
+       y = "Normalised count") + 
+  theme_classic(base_size = 7) +
+  theme(legend.title = element_blank(),
+        axis.line = element_blank(),
+        legend.position = c(0.7, 0.85),
+        legend.key.size = unit(0.1, "cm"),
+        legend.text = element_text(hjust = 0),
+        legend.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        axis.text = element_text(size = 5)) +
+  annotate("text", x = 325, y = 0.75, 
+           label = observed_mean_label, colour = "gray30", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.68, 
+           label = random_mean_label, colour = "#75b8d1", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.61, 
+           label = p_value_label, colour = "gray30", size = 2, hjust = 0) -> spatial_b117_plot
+
+spatial_b117_plot
+
+pdf("./Plots/Spatial-randomness_b117.pdf",
+    width = 1.47, height = 1.55)
+print(spatial_b117_plot)
+dev.off()
+```
+
+
+
+

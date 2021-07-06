@@ -1,0 +1,55 @@
+# General configuration
+## The number of processes in the pool of processes
+number_of_workers: 32
+## The directory with images
+input_pattern: C:\\Users\\Danny\\Desktop\\smFISH_Pypeline\\input\\*.tif
+## The directory where the big-fish output data will be stored
+output_dir: C:\\Users\\Danny\\Desktop\\smFISH_Pypeline\\output
+## The directory where the reference spot output data will be stored
+output_refspot_dir: C:\\Users\\Danny\\Desktop\\smFISH_Pypeline\\output_ref_spot
+## The channels for which to run the processing
+channels: [2, 3]
+## Data voxel sizes
+voxel_size_yx: 65
+voxel_size_z: 200
+
+# OMERO configuration
+OMERO_user: user1234
+## A dictionary of datasets and associated search strings
+OMERO_datasets: {"25097": "2h", "25098": "6h"}
+
+# Cellpose configuration
+## Channel to segment
+seg_ch: 1
+## If using FISH channel as mask, define which images wll be treated
+## this way as well as intensity clip value
+cp_search_string: R1
+cp_clip: 200
+## Median filter radius to aid segmentation
+median_filter: 20
+## Cellpose parameters
+diameter: 325
+flow_threshold: 0.9
+cellprob_threshold: -6
+do_3D: False # Enable 3D segmentation of 4D data
+## Boolean flag to toggle GPU support in Cellpose
+gpu: True
+
+# Bigfish configuration
+## PSF parameters
+ex: 570
+em: 610
+NA: 1.4
+RI: 1.364
+microscope: confocal # widefield or nipkow
+## Bigfish single-spot detection parameters
+bg_radius: 5
+smFISH_ch1: 2
+smFISH_ch1_thresh: 100
+smFISH_ch2: 3
+smFISH_ch2_thresh: 130
+# Bigfish cluster decomp and foci detection parameters
+alpha: 0.7
+beta: 1
+bf_radius: 150
+nb_min_spots: 4

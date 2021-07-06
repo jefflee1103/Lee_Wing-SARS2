@@ -1,0 +1,311 @@
+---
+title: "CoV-FISH-MS_Figure1"
+author: "Jeff Lee"
+date: "22/03/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# ENVIRONMENT
+
+```{r}
+library(tidyverse)
+library(hrbrthemes)
+library(scales)
+library(patchwork)
+```
+
+# smFISH SPOT INTENSITY DISTRIBUTION
+
+```{r}
+all_spots <- 
+  read_tsv("./Data/Figure1/_FISH-QUANT__all_spots_201125.txt", skip = 13) %>%
+  filter(TH_fit == 1) %>%
+  select(c(INT_filt, INT_raw)) %>%
+  mutate(strand = "(+)ve strand smFISH")
+
+all_spots %>%
+  ggplot(aes(x = INT_filt)) + 
+  geom_density(adjust = 1.25, size = 1) +
+  scale_x_continuous(limits = c(5, 65)) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  scale_colour_manual(values = c("magenta", "green")) + 
+  labs(x = "Single spot fluorescence intensity (A.U.)",
+       y = "% Frequency") +
+  theme_classic(base_size = 9) +
+  theme(axis.line = element_blank(), 
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.25),
+        legend.title = element_blank(),
+        legend.position = "bottom") +
+  guides(colour = guide_legend(reverse = TRUE))
+
+```
+
+# DETECTION EFFICIENCY
+
+```{r}
+nn.spots <- read_csv("./Data/Figure1/nearest_neighbour_spots.csv")
+nn.summary <- read_csv("./Data/Figure1/nearest_neighbour_summary.csv")
+
+nn.spots %>%
+  ggplot(aes(x = nn.dist, y = ..scaled.., colour = category, fill = category)) +
+  geom_density(aes(size = category), adjust = 2, alpha = 0.1) +
+  scale_size_manual(values = c(0.5, 0.25)) +
+  geom_vline(xintercept = 300, alpha = 0.3, size = 0.5) +
+  labs(x = "nearest neighbour distance (nm)", y = "Scaled density") +
+  scale_x_continuous(limits = c(0, 1000)) +
+  scale_colour_manual(values = c("#75b8d1", "#d18975")) + 
+  scale_fill_manual(values = c("#75b8d1", "#d18975")) + 
+  theme_classic(base_size = 7) +
+  theme(axis.line = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 5),
+        legend.key.size = unit(0.3, 'cm'),
+        legend.position = c(0.8, 0.8),
+        legend.background = element_blank()) +
+  guides(colour = guide_legend(reverse = TRUE),
+         fill = guide_legend(reverse = TRUE),
+         size = FALSE) -> p1
+
+nn.summary %>%
+  ggplot(aes(x = category, y = percentage.overlap)) +
+  geom_jitter(position = position_jitter(0.05), size = 1, colour = 'gray') +
+  geom_pointrange(stat = "summary", fun.data = "mean_sdl", fun.args = list(mult = 1), 
+                  colour = 'red', size = 0.15) +
+  scale_y_continuous(limits = c(80, 100)) +
+  labs(y = "% overlap in 3D (< 300 nm)") +
+  theme_classic(base_size = 7) +
+  theme(axis.title.x = element_blank(),
+        axis.line = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        legend.title = element_blank()) -> p2
+
+p1/p2
+
+pdf("./Plots/nnpercentage.pdf",
+    width = 4/2.54, height = 6.7/2.54)
+print(p1/p2)
+dev.off()
+
+```
+
+
+# PROBE SPECIFICITY
+
+## Import and make plotting dataframes 
+
+```{r}
+# IMPORT
+
+specificity <- read_tsv("./Data/Figure1/gRNA_pos_transcriptomic_matches.tsv") %>%
+  mutate(name = str_remove(name, "ORF1a_"))
+
+# MAKE PLOTTING DF
+
+## Viral df
+
+plot_df_viral <- specificity %>%
+  select(
+    name,
+    ends_with('genome_edit_distance'),
+    -monkey_txome_edit_distance,
+    -human_genome_edit_distance
+  ) %>%
+  dplyr::select(all_of("name"),
+                contains("_edit_distance")) %>%
+  pivot_longer(
+    contains("_edit_distance"),
+    names_to = "species",
+    values_to = "value"
+  ) %>%
+  mutate(species = str_extract(!!sym("species"), "^[:alnum:]*(?=_)")) %>%
+  mutate(species = case_when(
+    species == "SARS2" ~ "SARS-CoV-2",
+    species == "SARS1" ~ "SARS-CoV-1",
+    species == "MERS" ~ "MERS-CoV",
+    species == "E229" ~ "229E",
+    TRUE ~ species
+  ))
+
+## Host df
+
+plot_df_host <- specificity %>%
+  select(
+    name,
+    monkey_txome_edit_distance,
+    human_txome_edit_distance
+  ) %>%
+  dplyr::select(all_of("name"),
+                contains("_edit_distance")) %>%
+  pivot_longer(
+    contains("_edit_distance"),
+    names_to = "species",
+    values_to = "value"
+  ) %>%
+  mutate(species = str_extract(!!sym("species"), "^[:alnum:]*(?=_)")) %>%
+  mutate(species = case_when(
+    species == "human" ~ "Human",
+    species == "monkey" ~ "Green monkey",
+  ))
+
+
+## Tm df
+
+plot_df_tm <- specificity %>% dplyr::select(name, gene, Tm)
+
+```
+
+## Plotting
+
+```{r}
+# PLOTTING
+
+## Define plotting variables
+
+limit <- 6
+tile_ratio <- 1
+guide_title <-  "Minimum\nedit distance"
+base_size <- 9
+
+viral_species_order <- c("SARS-CoV-1", "SARS-CoV-2", "MERS-CoV", "229E", "NL63", "OC43" , "HKU1")
+host_species_order <- c("Human", "Green monkey") 
+
+viral_colours       <- c("white", RColorBrewer::brewer.pal(limit+1,"Blues"))
+host_colours <- c("white", RColorBrewer::brewer.pal(limit+1,"Greens"))
+
+label_order   <- c(0:limit, stringr::str_c(limit+1, " <"))
+
+myPalette   <- colorRampPalette(RColorBrewer::brewer.pal(9, "YlOrRd"))
+guide_title_tm <- "Tm"
+
+min_val <- min(plot_df_tm[,"Tm"])
+max_val <- max(plot_df_tm[,"Tm"])
+
+tm_colours <- myPalette(max_val)
+
+## Viral plot
+
+plot_df_viral %>%
+  mutate(count = ifelse(
+    !!sym("value") > limit | is.na(!!sym("value")),
+    stringr::str_c(limit+1, " <"),
+    as.character(!!sym("value"))
+  )) %>%
+  ggplot2::ggplot(
+    aes(
+      y = factor(!!sym("species"), levels = rev(viral_species_order)),
+      x = factor(name, levels = unique(name)),
+      fill = factor(count, levels = label_order) )) +
+  ggplot2::geom_tile(colour="lightgray", size=0.2) +
+  ggplot2::coord_fixed(ratio = tile_ratio) +
+  ggplot2::scale_fill_manual(values = viral_colours, drop = FALSE) +
+  ggplot2::guides(
+    fill = ggplot2::guide_legend(
+      title = guide_title, 
+      title.position = "top",
+      label.position = "right",
+      ncol = 1
+    )
+  ) +
+  ggplot2::labs(x = "", y = "", subtitle = "Coronaviridae transcriptome") +
+  ggplot2::theme_minimal(base_size = base_size) +
+  ggplot2::theme(axis.text.x = ggplot2::element_blank(), 
+                 legend.position = 'bottom') -> Virus
+
+## Host plot
+
+plot_df_host %>%
+  mutate(count = ifelse(
+    !!sym("value") > limit | is.na(!!sym("value")),
+    stringr::str_c(limit+1, " <"),
+    as.character(!!sym("value"))
+  )) %>%
+  ggplot2::ggplot(
+    aes(
+      y = factor(!!sym("species"), levels = rev(host_species_order)),
+      x = factor(name, levels = unique(name)),
+      fill = factor(count, levels = label_order) )) +
+  ggplot2::geom_tile(colour="lightgray", size=0.2) +
+  ggplot2::coord_fixed(ratio = tile_ratio) +
+  ggplot2::scale_fill_manual(values = host_colours, drop = FALSE) +
+  ggplot2::guides(
+    fill = ggplot2::guide_legend(
+      title = guide_title, 
+      title.position = "top",
+      label.position = "right",
+      ncol = 1
+    )
+  ) +
+  ggplot2::labs(x = "", y = "", subtitle = "Host transcriptome") +
+  ggplot2::theme_minimal(base_size = base_size) +
+  ggplot2::theme(axis.text.x = ggplot2::element_blank(), 
+                 legend.position = 'bottom') -> Host
+
+## Tm plot 
+
+plot_df_tm %>%
+  ggplot2::ggplot(
+    aes(
+      y    = !!sym("gene"),
+      x    = factor(!!sym("name"), levels = unique(name)),
+      fill = !!sym("Tm")
+    )
+  ) +
+  ggplot2::geom_tile(colour="lightgray", size=0.2) +
+  ggplot2::coord_fixed(ratio = tile_ratio) +
+  ggplot2::scale_fill_gradientn(
+    colours = tm_colours,
+    limits  = c(min_val, max_val)
+  ) + 
+  ggplot2::guides(
+    fill = ggplot2::guide_legend(
+      title = guide_title_tm, 
+      title.position = "top",
+      label.position = "right",
+      ncol = 1,
+      reverse = TRUE
+    )
+  ) +
+  labs(x = "", y = "", subtitle = "Melting temperature") +
+  ggplot2::theme_minimal(base_size = base_size) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5), legend.position = 'bottom',
+                 axis.text.y = element_blank()) -> Tm
+
+## Patchwork
+
+(Virus / Host / Tm) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = 'right',
+        legend.key.size = unit(0.2, "cm")) -> specificity_plot
+
+specificity_plot
+
+## Export 
+
+pdf("./Plots/probe_specificity_heatmap.pdf",
+    width = 17/2.54, height = 8/2.54)
+print(specificity_plot)
+dev.off()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
