@@ -69,7 +69,8 @@ RNA_df %>%
   ggplot(aes(x = as.factor(time), y = total_vRNAs, colour = condition)) +
   geom_point(position = position_jitterdodge(jitter.width = 0.5, dodge.width = 0.75),
             size = 0.5, alpha = 0.25, stroke = 0.1) +
-  geom_hline(yintercept = 100000, linetype = "dashed", size = 0.5, alpha = 0.25) + 
+  geom_hline(yintercept = 100000, linetype = "dashed", size = 0.3, alpha = 0.25) + 
+  geom_hline(yintercept = 100, linetype = "dashed", size = 0.3, alpha = 0.25) + 
   scale_y_log10(limits = c(10^0, 10^8),
                 breaks = trans_breaks('log10', function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
@@ -101,7 +102,8 @@ RNA_df_ratio %>%
   ggplot(aes(x = as.factor(time), y = sgRNA, colour = condition)) +
   geom_point(position = position_jitterdodge(jitter.width = 0.5, dodge.width = 0.75),
             size = 0.5, alpha = 0.25, stroke = 0.1) +
-  geom_hline(yintercept = 100000, linetype = "dashed", size = 0.5, alpha = 0.25) + 
+  geom_hline(yintercept = 100000, linetype = "dashed", size = 0.3, alpha = 0.25) + 
+  geom_hline(yintercept = 100, linetype = "dashed", size = 0.3, alpha = 0.25) + 
   scale_y_log10(limits = c(10^0, 10^8),
                 breaks = trans_breaks('log10', function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
@@ -551,6 +553,40 @@ print(RDV_IC50)
 dev.off()
 
 ```
+
+## smFISH vs. Intensity calibration
+
+```{r}
+# Import data
+calibration_df <- read_csv("./Data/Figure3/intensity_calibration.csv")
+
+# Plot
+calibration_df %>%
+  ggplot(aes(x = total_vRNAs_intensity, y = total_vRNAs_smFISH)) +
+  geom_point(size = 0.4, alpha = 0.80, colour = "gray50", stroke = 0) +
+  geom_smooth(method = "lm", colour = "#3f2d54", size = 0.3) +
+  scale_x_log10(labels = trans_format("log10", math_format(10^.x))) +
+  scale_y_log10(labels = trans_format("log10", math_format(10^.x))) +
+  labs(title = "smFISH intensity calibration",
+       x = "RNA count: smFISH",
+       y = "RNA count: Integrated intensity") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 8),
+        axis.line = element_blank(),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> intensity_calibration
+
+intensity_calibration
+
+pdf("./Plots/intensity_calibration.pdf",
+    width = 4.5/2.54, height = 4.5/2.54)
+print(intensity_calibration)
+dev.off()
+
+
+```
+
 
 ## RDV decay curve
 
