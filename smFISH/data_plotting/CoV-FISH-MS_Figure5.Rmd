@@ -17,7 +17,7 @@ library(patchwork)
 library(scales)
 library(rstatix)
 library(ggridges)
-library(PerformanceAnalytics)
+
 ```
 
 # VICTORIA vs. B.1.1.7 smFISH
@@ -743,6 +743,26 @@ get_mean_label <- function(x, y){
   paste0("mean = ", observed_mean, " µm") %>% return()
 }
 
+get_rn <- function(df){
+  variable_name <- deparse(substitute(df))
+  total_area <- scan_area %>% filter(data == variable_name) %>% pull(area)
+  n_images <- scan_area %>% filter(data == variable_name) %>% pull(n_images)
+  nn_distance_vector <- df %>% filter(data_type == "Observed") %>% pull(nn_distance)
+  Rn <- 2*(nn_distance_vector %>% mean()) / (sqrt(total_area*n_images*2/(length(nn_distance_vector))))
+  Rn <- round(Rn, digits = 3)
+  paste0("Rn = ", Rn) %>% return()
+}
+
+scan_area <- tibble(data = c("nndist_VIC_8h", "nndist_B117_8h", "nndist_VIC_24h", "nndist_B117_24h"),
+                    area = c(1210000, 1210000, 15330000, 39430000),
+                    n_images = c(8, 8, 2, 2))
+
+get_rn(nndist_VIC_8h)
+get_rn(nndist_B117_8h)
+get_rn(nndist_VIC_24h)
+get_rn(nndist_B117_24h)
+
+
 ## Plotting function
 plot_nndistance <- function(df, ObsBin, RandBin){
   variable_name <- deparse(substitute(df))
@@ -775,36 +795,35 @@ plot_nndistance <- function(df, ObsBin, RandBin){
         legend.background = element_blank(),
         panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
         axis.text = element_text(size = 5)) +
-  annotate("text", x = 325, y = 0.75, 
+  annotate("text", x = 325, y = 0.90, 
            label = get_mean_label(df, "Observed"), colour = "gray30", size = 2, hjust = 0) +
-  annotate("text", x = 325, y = 0.68, 
+  annotate("text", x = 325, y = 0.83, 
            label = get_mean_label(df, "Random"), colour = colour, size = 2, hjust = 0) +
-  annotate("text", x = 325, y = 0.61, 
-           label = get_pvalue(df), colour = "gray30", size = 2, hjust = 0)
+  annotate("text", x = 325, y = 0.76, 
+           label = get_pvalue(df), colour = "gray30", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.69, 
+           label = get_rn(df), colour = "gray30", size = 2, hjust = 0)
 }
 
 # * * * * * Plot
 
 (plot_nndistance(nndist_VIC_8h, 50, 100) + plot_nndistance(nndist_VIC_24h, 100, 500)) / 
   (plot_nndistance(nndist_B117_8h, 20, 100) + plot_nndistance(nndist_B117_24h, 85, 100)) + 
-  plot_layout(guides = "collect")
+  plot_layout(guides = "collect") -> spatial_all_times
 
+spatial_all_times
+
+pdf("./Plots/Spatial-analysis-8hpi-24hpi.pdf",
+    width = 4, height = 3.5)
+print(spatial_all_times)
+dev.off()
 
 
 
 
 ```
 
-```{r}
-nndist_VIC_8h %>% filter(data_type == "Observed") %>% pull(nn_distance) %>% e1071::skewness()
 
-nn_distance_vector <- nndist_B117_24h %>% filter(data_type == "Observed") %>% pull(nn_distance)
-2*(0.55/0.33)*(nn_distance_vector %>% mean()) / (sqrt(79925002*2/(length(nn_distance_vector))))
-
-nn_distance_vector <- nndist_VIC_24h %>% filter(data_type == "Observed") %>% pull(nn_distance)
-2*(0.55/0.33)*(nn_distance_vector %>% mean()) / (sqrt(28925002*2/(length(nn_distance_vector))))
-
-```
 
 
 
