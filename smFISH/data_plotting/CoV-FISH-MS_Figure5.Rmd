@@ -17,6 +17,7 @@ library(patchwork)
 library(scales)
 library(rstatix)
 library(ggridges)
+
 ```
 
 # VICTORIA vs. B.1.1.7 smFISH
@@ -695,6 +696,140 @@ pdf("./Plots/Spatial-randomness_b117.pdf",
 print(spatial_b117_plot)
 dev.off()
 ```
+
+
+## Spatial distribution comparison of VIC vs. B.1.1.7 8h and 24h
+
+```{r}
+# * * * * * Import data
+
+## 24hpi
+nndist_VIC_24h <- read_csv("./Data/Figure5/Vero_Vic_24h_spatial_nn-distances.csv") %>%
+  dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
+  pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
+  filter(!is.na(nn_distance)) %>%
+  mutate(nn_distance = nn_distance * 0.45)
+
+nndist_B117_24h <- read_csv("./Data/Figure5/Vero_B117_24h_spatial_nn-distances.csv") %>%
+  dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
+  pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
+  filter(!is.na(nn_distance)) %>%
+  mutate(nn_distance = nn_distance * 0.45)
+
+## 8hpi
+nndist_VIC_8h <- read_csv("./Data/Figure4/Spatial-randomness_Vero_nn_distances.csv") %>%
+  dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
+  pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
+  filter(!is.na(nn_distance)) %>%
+  mutate(nn_distance = nn_distance * 0.65)
+
+nndist_B117_8h <- read_csv("./Data/Figure5/Vero_B117_8h_spatial_nn-distances.csv") %>%
+  dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
+  pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
+  filter(!is.na(nn_distance)) %>%
+  mutate(nn_distance = nn_distance * 0.65)
+
+# * * * * * Define functions for stats/averaging/plotting
+
+## Stats/Averaging
+get_pvalue <- function(x){
+  pvalue <- x %>% t_test(nn_distance ~ data_type) %>% add_significance() %>% pull(p)
+  paste0("p = ", pvalue) %>% return()
+}
+
+get_mean_label <- function(x, y){
+  observed_mean <- x %>% filter(data_type == y) %>%
+  pull(nn_distance) %>% mean() %>% round(0)
+  paste0("mean = ", observed_mean, " µm") %>% return()
+}
+
+get_rn <- function(df){
+  variable_name <- deparse(substitute(df))
+  total_area <- scan_area %>% filter(data == variable_name) %>% pull(area)
+  n_images <- scan_area %>% filter(data == variable_name) %>% pull(n_images)
+  nn_distance_vector <- df %>% filter(data_type == "Observed") %>% pull(nn_distance)
+  Rn <- 2*(nn_distance_vector %>% mean()) / (sqrt(total_area*n_images*2/(length(nn_distance_vector))))
+  Rn <- round(Rn, digits = 3)
+  paste0("Rn = ", Rn) %>% return()
+}
+
+scan_area <- tibble(data = c("nndist_VIC_8h", "nndist_B117_8h", "nndist_VIC_24h", "nndist_B117_24h"),
+                    area = c(1210000, 1210000, 15330000, 39430000),
+                    n_images = c(8, 8, 2, 2))
+
+get_rn(nndist_VIC_8h)
+get_rn(nndist_B117_8h)
+get_rn(nndist_VIC_24h)
+get_rn(nndist_B117_24h)
+
+
+## Plotting function
+plot_nndistance <- function(df, ObsBin, RandBin){
+  variable_name <- deparse(substitute(df))
+  virus <- ifelse(str_detect(variable_name, "VIC"), "VIC", "B.1.1.7")
+  hpi <- ifelse(str_detect(variable_name, "24h"), "24hpi", "8hpi")
+  title <- paste0(virus, " ", hpi)
+  colour <- ifelse(virus == "VIC", "#f9ab38", "#5672be")
+  
+  ggplot() +
+  geom_histogram(data = subset(df, data_type == "Observed"),
+                 aes(x = nn_distance, y = stat(ndensity), fill = data_type),
+                 colour = "white", bins = ObsBin, alpha = 1, size = 0.1) +
+  geom_histogram(data = subset(df, data_type == "Random"),
+                 aes(x = nn_distance, y = stat(ndensity), fill = data_type),
+                 bins = RandBin, alpha = 0.4) +
+  scale_fill_manual(values = c("gray50", colour)) + 
+  scale_y_continuous(limits = c(0, 1),
+                     breaks = seq(0, 1, by = 0.2)) +
+  labs(title = title,
+       x = "Nearest neighbour \n distance (µm)",
+       y = "Normalised count") + 
+  coord_cartesian(xlim = c(0, 800)) + 
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7, face = "bold"),
+        legend.title = element_blank(),
+        axis.line = element_blank(),
+        legend.position = c(0.7, 0.85),
+        legend.key.size = unit(0.1, "cm"),
+        legend.text = element_text(hjust = 0),
+        legend.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        axis.text = element_text(size = 5)) +
+  annotate("text", x = 325, y = 0.90, 
+           label = get_mean_label(df, "Observed"), colour = "gray30", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.83, 
+           label = get_mean_label(df, "Random"), colour = colour, size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.76, 
+           label = get_pvalue(df), colour = "gray30", size = 2, hjust = 0) +
+  annotate("text", x = 325, y = 0.69, 
+           label = get_rn(df), colour = "gray30", size = 2, hjust = 0)
+}
+
+# * * * * * Plot
+
+(plot_nndistance(nndist_VIC_8h, 50, 100) + plot_nndistance(nndist_VIC_24h, 100, 500)) / 
+  (plot_nndistance(nndist_B117_8h, 20, 100) + plot_nndistance(nndist_B117_24h, 85, 100)) + 
+  plot_layout(guides = "collect") -> spatial_all_times
+
+spatial_all_times
+
+pdf("./Plots/Spatial-analysis-8hpi-24hpi.pdf",
+    width = 5, height = 4.5)
+print(spatial_all_times)
+dev.off()
+
+
+
+
+```
+
+
+
+
+
+
+
+
 
 
 
