@@ -14,6 +14,8 @@ library(hrbrthemes)
 library(patchwork)
 library(rstatix)
 library(ggridges)
+library(janitor)
+library(ggbeeswarm)
 
 ```
 
@@ -319,7 +321,63 @@ smFISH_count %>%
 
 # SUPPLEMENTARY
 
-# N protein co-localisation with sg/gRNAs
+## SARS-CoV-2 RNA dispersion statistics 
+For comparing subcellular distribution of SARS-CoV-2 RNA species. RDI calculator was used on thresholded images to calculated RNA dispersion indices. 
+
+Raw images were max-projected and thresholded: DAPI - Huang2, CellMask - Huang, smFISH - Max Entropy or Li.
+Thresholded images were padded (so that the cells are not touching the edge) with empy pixels. 
+Resulting images were fed into RDI calculator without background subtraction. 
+
+```{r}
+# * * * * * Import dataframe
+RDI_raw <- read_csv("./Data/Figure2/RNA-dispersion-index_Vero_6hpi_RAW_DATA.csv") 
+
+RDI_tidy <- RDI_raw %>%
+  clean_names() %>%
+  dplyr::select(contains("periph"), contains("polarization"), contains("dispersion")) %>%
+  pivot_longer(cols = everything(),
+               names_to = "data_type",
+               values_to = "index") %>%
+  mutate(species = if_else(str_detect(data_type, "localized"), "ORFN", "gRNA")) %>%
+  mutate(RDI_type = case_when(
+    str_detect(data_type, "periph") ~ "Peripheral Distribution Index",
+    str_detect(data_type, "polarization") ~ "Polarisation Index",
+    str_detect(data_type, "dispersion") ~ "Dispersion Index"
+  ))
+
+# * * * * * Stats
+
+## Normality test
+RDI_tidy %>%
+  group_by(RDI_type, species) %>%
+  shapiro_test(index)
+
+## 
+RDI_tidy %>%
+  group_by(RDI_type) %>%
+  wilcox_test(index ~ species)
+
+# * * * * * Plot
+colours <- c("#8fd175", "#d175b8")
+
+RDI_tidy %>%
+  filter(RDI_type != "Polarisation Index") %>%
+  ggplot(aes(x = species, y = index, colour = species)) +
+  geom_quasirandom(bandwidth = 0.2) +
+  scale_colour_manual(values = colours) + 
+  facet_wrap(~RDI_type)
+  
+
+
+
+
+
+
+
+```
+
+
+## N protein co-localisation with sg/gRNAs
 For comparing N-protein intensities in sgRNA/gRNA ellipsoids of Observed and Random distributed RNA for use with thresholding N co-localisation + compare N co-localisation of gRNA and sgRNA
 
 ```{r}
