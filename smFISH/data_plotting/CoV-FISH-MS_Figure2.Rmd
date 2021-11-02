@@ -13,13 +13,14 @@ library(tidyverse)
 library(hrbrthemes)
 library(patchwork)
 library(rstatix)
+library(ggridges)
 
 ```
 
 # N protein 
 ## gRNA line profiles 
 ```{r}
-line_profile_data <- read_csv("./Data/CoV-FISH-07_N-protein/N-protein_gRNA_line-profiles.csv")
+line_profile_data <- read_csv("./Data/Figure2/N-protein_gRNA_line-profiles.csv")
 
 ggplot(line_profile_data) +
   geom_line(aes(x = Distance, y = normalised, colour = signal),
@@ -42,25 +43,27 @@ plot1
 ## N protein overlap with gRNA and sgRNA 
 ```{r}
 # Import data
-N_overlap <- read_csv("./Data/Figure2/p_NProtein-overlap.csv")
+N_overlap <- read_csv("./Data/Figure2/p_NProtein-overlap_random.csv") %>%
+  filter(str_detect(data_type, "Observed")) %>%
+  mutate(data_type = str_remove(data_type, " Observed"))
 
 # Get mean labels
 N_overlap_anno <- N_overlap %>%
-  group_by(species) %>%
-  summarise(mean = mean(p_NCed)) %>%
+  group_by(data_type) %>%
+  summarise(mean = mean(p_NCed_stringent)) %>%
   ungroup() %>%
   mutate(label = paste0(round(mean, 1), "%"))
 
 # Statistics
-N_overlap %>% group_by(species) %>% shapiro_test(p_NCed) # normal
-star <- N_overlap %>% t_test(p_NCed ~ species) %>% add_significance() %>% pull(p.signif)
-pval <- N_overlap %>% t_test(p_NCed ~ species) %>% add_significance() %>% pull(p) 
+N_overlap %>% group_by(data_type) %>% shapiro_test(p_NCed_stringent) # normal
+star <- N_overlap %>% t_test(p_NCed_stringent ~ data_type) %>% add_significance() %>% pull(p.signif)
+pval <- N_overlap %>% t_test(p_NCed_stringent ~ data_type) %>% add_significance() %>% pull(p) 
 stat_anno <- paste0(star, "\np=", pval)
 
 # Plot 
 N_overlap %>%
-  mutate(species = fct_rev(species)) %>%
-  ggplot(aes(x = species, y = p_NCed, fill = species)) +
+  mutate(data_type = fct_rev(data_type)) %>%
+  ggplot(aes(x = data_type, y = p_NCed_stringent, fill = data_type)) +
   geom_bar(stat = "summary", width = 0.75) +
   geom_linerange(stat = "summary", fun.data = "mean_sdl", 
                  fun.args = list(mult = 1), size = 0.4) +
@@ -68,7 +71,7 @@ N_overlap %>%
                      limits = c(0, 100)) + 
   scale_fill_manual(values = c("#d175b8", "#8fd175")) +
   geom_label(data = N_overlap_anno,
-             aes(x = species, y = mean + 15, label = label), 
+             aes(x = data_type, y = mean + 13, label = label), 
              size = 1.5, label.padding = unit(0.15, "lines"), label.size = 0.1,
              inherit.aes = FALSE) + 
   labs(title = "N protein colocalisation",
@@ -80,7 +83,7 @@ N_overlap %>%
         legend.position = "none",
         panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
         strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) +
-  annotate(geom = "text", x = 1.5, y = 90, label = stat_anno, size = 2, colour = "gray10") +
+  annotate(geom = "text", x = 1.5, y = 90, label = stat_anno, size = 1.5, colour = "gray10") +
   coord_flip() -> plot2
 
 # patchwork
@@ -314,6 +317,70 @@ smFISH_count %>%
 ```
 
 
+# SUPPLEMENTARY
+
+# N protein co-localisation with sg/gRNAs
+For comparing N-protein intensities in sgRNA/gRNA ellipsoids of Observed and Random distributed RNA for use with thresholding N co-localisation + compare N co-localisation of gRNA and sgRNA
+
+```{r}
+# * * * * * Read data
+N_int_raw <- read_csv("./Data/Figure2/NProtein-overlap_intensity.csv") %>%
+  mutate(simulation = if_else(str_detect(data_type, "Observed"), "Observed", "Random"))
+
+# * * * * * Density plot
+colours <- c("#8fd175", "#d175b8")
+
+N_int_raw %>% 
+  ggplot(aes(x = IntegratedDensity, y = stat(ndensity), 
+             colour = species, fill = species, alpha = simulation)) + 
+  geom_density() + 
+  scale_x_log10() +
+  scale_colour_manual(values = colours) + 
+  scale_fill_manual(values = colours) +
+  scale_alpha_manual(values = c(0.8, 0.3))
+
+# * * * * * ggridge plot
+colours <- c("#8fd175", "#d175b8")
+order <- c("gRNA\nObserved", "sgRNA\nObserved", "gRNA\nRandom", "sgRNA\nRandom")
+
+N_int_raw %>% 
+  filter(IntegratedDensity > 0) %>%
+  mutate(data_type = str_replace(data_type, " ", "\n")) %>%
+  mutate(data_type = fct_relevel(data_type, rev(order))) %>%
+  ggplot(aes(x = IntegratedDensity, 
+             y = data_type, 
+             colour = species, fill = species, alpha = simulation)) + 
+  geom_vline(xintercept = 1500, size = 0.3, colour = "gray60", linetype = "dashed") +
+  geom_density_ridges(aes(height = stat(ndensity)),
+                       scale = 1.2, bandwidth = 0.02, size = 0.4) + 
+  scale_x_log10(labels = trans_format("log10", math_format(10^.x))) +
+  scale_colour_manual(values = colours) + 
+  scale_fill_manual(values = colours) +
+  scale_alpha_manual(values = c(0.7, 0.2)) +
+  labs(title = "SARS-CoV-2 RNA species N protein co-localisation", 
+       x = "Colocalised N protein voxel intensity (AU)",
+       y = "Density distribution",
+       fill = "",
+       colour = "") +
+  theme_classic(base_size = 8) +
+  theme(plot.title = element_text(hjust = 0.5, size = 8),
+        axis.text.y = element_text(size = 8, face = "bold"),
+        axis.line = element_blank(),
+        legend.position = "right",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5)) +
+  guides(alpha = "none") -> N_overlap_ridges
+
+N_overlap_ridges
+
+
+pdf("./Plots/N_overlap_ridges.pdf",
+    width = 4.75, height = 3)
+print(N_overlap_ridges)
+dev.off()
+
+
+
+```
 
 
 
