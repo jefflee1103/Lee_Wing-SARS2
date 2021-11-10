@@ -704,26 +704,26 @@ dev.off()
 # * * * * * Import data
 
 ## 24hpi
-nndist_VIC_24h <- read_csv("./Data/Figure5/Vero_Vic_24h_spatial_nn-distances.csv") %>%
+nndist_VIC_24h <- read_csv("./Data/Figure5/A549_Vic_24h_spatial_nn-distances.csv") %>%
   dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
   pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
   filter(!is.na(nn_distance)) %>%
   mutate(nn_distance = nn_distance * 0.45)
 
-nndist_B117_24h <- read_csv("./Data/Figure5/Vero_B117_24h_spatial_nn-distances.csv") %>%
+nndist_B117_24h <- read_csv("./Data/Figure5/A549_B117_24h_spatial_nn-distances.csv") %>%
   dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
   pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
   filter(!is.na(nn_distance)) %>%
   mutate(nn_distance = nn_distance * 0.45)
 
 ## 8hpi
-nndist_VIC_8h <- read_csv("./Data/Figure4/Spatial-randomness_Vero_nn_distances.csv") %>%
+nndist_VIC_8h <- read_csv("./Data/Figure4/Spatial-randomness_A549_nn_distances.csv") %>%
   dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
   pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
   filter(!is.na(nn_distance)) %>%
-  mutate(nn_distance = nn_distance * 0.65)
+  mutate(nn_distance = nn_distance * 0.45)
 
-nndist_B117_8h <- read_csv("./Data/Figure5/Vero_B117_8h_spatial_nn-distances.csv") %>%
+nndist_B117_8h <- read_csv("./Data/Figure5/A549_B117_8h_spatial_nn-distances.csv") %>%
   dplyr::select(c("Observed" = nn_distances_data, "Random" = nn_distances_sim)) %>%
   pivot_longer(everything(), names_to = "data_type", values_to = "nn_distance") %>%
   filter(!is.na(nn_distance)) %>%
@@ -754,7 +754,7 @@ get_rn <- function(df){
 }
 
 scan_area <- tibble(data = c("nndist_VIC_8h", "nndist_B117_8h", "nndist_VIC_24h", "nndist_B117_24h"),
-                    area = c(1210000, 1210000, 15330000, 39430000),
+                    area = c(1540000, 1210000, 15330000, 39430000),
                     n_images = c(8, 8, 2, 2))
 
 get_rn(nndist_VIC_8h)
