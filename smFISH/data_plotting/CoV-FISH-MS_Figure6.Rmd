@@ -367,6 +367,70 @@ dev.off()
 ```
 
 
+# Infectious particle release
+
+## Infectious particle release from A549-ACE2 cells
+
+```{r}
+# * * * * *  Load data
+
+## Set factor levels 
+time_order <- c("2hpi", "8hpi", "24hpi")
+virus_order <- c("VIC", "B.1.1.7")
+
+## Read data and add psuedocount
+ifp <- read_csv("./Data/Figure6/A549-ACE2_infectious_particle_release.csv") %>%
+  mutate(PFU_per_ml = if_else(time == "2hpi", 10, PFU_per_ml)) %>%
+  mutate(time = fct_relevel(time, time_order)) %>%
+  mutate(virus = fct_relevel(virus, virus_order))
+
+# * * * * * Statistics
+
+## t-test
+ifp %>%
+  mutate(PFU_per_ml_log = log10(PFU_per_ml)) %>%
+  filter(time != "2hpi") %>%
+  group_by(time) %>%
+  t_test(PFU_per_ml_log ~ virus) %>%
+  add_significance() %>%
+  dplyr::select(time, p, p.signif) %>%
+  add_row(time = "2hpi", p = 1, p.signif = "ns") %>%
+  mutate(p_label = paste0(p.signif, "\np=", p)) %>%
+  mutate(time = fct_relevel(time, time_order)) %>%
+  arrange(time) %>%
+  add_column(y_pos = c(50, 8000, 60000)) -> ifp_stat
+  
+# * * * * * Plot
+
+## Plot
+ifp %>%
+  ggplot(aes(x = virus, y = PFU_per_ml, colour = virus)) + 
+  geom_quasirandom(width = 0.1) +
+  geom_text(data = ifp_stat,
+            aes(x = 1.5, y = y_pos, label = p_label), 
+            inherit.aes = FALSE, cex = 2) +
+  labs(title = "Infectious Virus Release",
+       x = "",
+       y = "PFU/ml (log)") + 
+  scale_colour_manual(values = c("#f9ab38", "#5672be")) +
+  scale_y_log10(labels = trans_format("log10", math_format(10^.x))) +
+  theme_minimal(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position  = "none",
+        strip.text = element_text(size = 7 ,face = "bold")) +
+  facet_wrap(~ time) -> ifp_plot
+
+ifp_plot
+
+## Export
+pdf("./Plots/ifp_plot",
+    width = 7/2.54, height = 8/2.54)
+print(ifp_plot)
+dev.off()
+
+
+```
+
 
 
 
