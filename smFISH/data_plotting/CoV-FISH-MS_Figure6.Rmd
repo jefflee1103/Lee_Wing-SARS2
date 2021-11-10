@@ -61,8 +61,8 @@ FACS_df %>%
   geom_point(shape = 21, size = 0.6, stroke = 0.2) +
   geom_vline(xintercept = 280, size = 0.5, alpha = 0.5, linetype = "dashed", colour = "gray50") +
   labs(title    = "smFISH intensity per cell",
-       x        = "ORF-N smFISH intensity (Log)",
-       y        = "ORF1a smFISH intensity (Log)") + 
+       x        = "ORF-N smFISH intensity (log)",
+       y        = "ORF1a smFISH intensity (log)") + 
   scale_alpha_manual(values = c(0.4, 0.4, 0.05)) +
   scale_x_log10(limits = c(1e2, 1e4),
                 labels = trans_format("log10", math_format(10^.x))) +
@@ -83,7 +83,7 @@ FACS_df %>%
 plot2
 
 pdf("./Plots/A549_FACS.pdf",
-    width = 9.5/2.54, height = 5.5/2.54)
+    width = 12/2.54, height = 6.5/2.54)
 print(plot2)
 dev.off()
 
@@ -217,7 +217,7 @@ p1_2hpi + p2_2hpi
 
 # Export
 pdf("./Plots/A549_2hpi_stat.pdf",
-    width = 7/2.54, height = 4.2/2.54)
+    width = 7/2.54, height = 5.75/2.54)
 print(p1_2hpi + p2_2hpi)
 dev.off()
 
@@ -404,27 +404,32 @@ ifp %>%
 
 ## Plot
 ifp %>%
-  ggplot(aes(x = virus, y = PFU_per_ml, colour = virus)) + 
-  geom_quasirandom(width = 0.1) +
+  ggplot(aes(x = time, y = PFU_per_ml, fill = virus)) + 
+  geom_bar(stat = "summary", width = 0.6, position = position_dodge(width = 0.8), alpha = 0.8) +
+  geom_linerange(stat = "summary", position = position_dodge(width = 0.8)) + 
   geom_text(data = ifp_stat,
-            aes(x = 1.5, y = y_pos, label = p_label), 
+            aes(x = time, y = y_pos, label = p_label), 
             inherit.aes = FALSE, cex = 2) +
+  geom_hline(yintercept = 10, linetype = "dotted", size = 0.5, colour = "gray20") +
   labs(title = "Infectious Virus Release",
-       x = "",
-       y = "PFU/ml (log)") + 
-  scale_colour_manual(values = c("#f9ab38", "#5672be")) +
+       x = "Time post infection (hpi)",
+       y = "PFU/ml (log)",
+       fill = "") + 
+  scale_fill_manual(values = c("#f9ab38", "#5672be")) +
   scale_y_log10(labels = trans_format("log10", math_format(10^.x))) +
   theme_minimal(base_size = 7) +
   theme(plot.title = element_text(hjust = 0.5),
-        legend.position  = "none",
-        strip.text = element_text(size = 7 ,face = "bold")) +
-  facet_wrap(~ time) -> ifp_plot
+        legend.position  = "right",
+        strip.text = element_text(size = 7 ,face = "bold"),
+        legend.key.size = unit(0.1, 'cm')) +
+  annotate(geom = "text", x = 0.65, y = 15, label = "LLOD", cex = 2)  -> ifp_plot
+
 
 ifp_plot
 
 ## Export
-pdf("./Plots/ifp_plot",
-    width = 7/2.54, height = 8/2.54)
+pdf("./Plots/ifp_plot.pdf",
+    width = 6.5/2.54, height = 5.5/2.54)
 print(ifp_plot)
 dev.off()
 
