@@ -405,7 +405,7 @@ For comparing N-protein intensities in sgRNA/gRNA ellipsoids of Observed and Ran
 
 ```{r}
 # * * * * * Read data
-N_int_raw <- read_csv("./Data/Figure2/NProtein-overlap_intensity.csv") %>%
+N_int_raw <- readRDS("./Data/Figure2/NProtein-overlap_intensity.RDS") %>%
   mutate(simulation = if_else(str_detect(data_type, "Observed"), "Observed", "Random"))
 
 # * * * * * Density plot
