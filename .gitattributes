@@ -1,3 +1,2 @@
 # Auto detect text files and perform LF normalization
 * text=auto
-smFISH/data_plotting/Data/Figure2/NProtein-overlap_intensity.csv filter=lfs diff=lfs merge=lfs -text
