@@ -592,34 +592,37 @@ dev.off()
 
 ```{r}
 # Import data
-decay_df_untreated <- read_csv("./Data/Figure3/CF06_RNA-quantification.csv") %>%
+decay_df_untreated <- read_csv("./Data/Figure3/CF06_RNA-quantification_df6.csv") %>%
   filter(condition == "Untreated")
-decay_df_RDV <- read_csv("./Data/Figure3/CF06_RNA-quantification.csv") %>%
+decay_df_RDV <- read_csv("./Data/Figure3/CF06_RNA-quantification_df6.csv") %>%
   filter(condition == "RDV")
 
 # Decay functions fitted from jupyter file
 gRNA_RDV_fit <- function(x){
-  5058186.847403619 * exp(-0.05813581984152092 * (x+24)) - 260624.66587935033
+  5208835.4894508235 * exp(-0.09940804642469374 * (x+24)) -23790.892368007248
 }
-ORFN_RDV_fit <- function(x){
-  916020131.6680868 * exp(-0.22665539948104615 * (x+24)) + 93076.98792596412
-}
-decay_line_gRNA <- tibble(time = seq(0, 35, 0.01)) %>%
-  mutate(fit = gRNA_RDV_fit(time), Channel = "gRNA") %>%
-  mutate(time = time + 24)
-decay_line_ORFN <- tibble(time = seq(0, 35, 0.01)) %>%
-  mutate(fit = ORFN_RDV_fit(time), Channel = "ORFN") %>%
-  mutate(time = time +24)
 
-decay_line <- bind_rows(decay_line_gRNA, decay_line_ORFN) %>%
-  filter(Channel == "gRNA")
+gRNA_INF_fit <- function(x){
+  3500853.795573997 * exp(-0.08492950876764101 * (x+24)) -16784.180473896864
+}
+
+decay_line_gRNA_RDV <- tibble(time = seq(0, 35, 0.01)) %>%
+  mutate(fit = gRNA_RDV_fit(time), condition = "RDV") %>%
+  mutate(time = time + 24)
+
+decay_line_gRNA_INF <- tibble(time = seq(0, 35, 0.01)) %>%
+  mutate(fit = gRNA_INF_fit(time), condition = "Untreated") %>%
+  mutate(time = time + 24)
 
 decay_anno <- tibble(
-  Channel = c("gRNA", "ORFN"),
-  halflife = c(11.9, 3.1)) %>%
+  condition = c("Untreated", "RDV"),
+  halflife = c(8.2, 7.0)) %>%
   mutate(x_pos = halflife + 4) %>%
-  mutate(label = paste0("t1/2 = ", halflife, " hrs")) %>%
-  filter(Channel == "gRNA")
+  mutate(label = paste0("t1/2 = ", halflife, " hrs")) 
+
+decay_anno_INF <- decay_anno %>% filter(condition == "Untreated")
+
+decay_anno_RDV <- decay_anno %>% filter(condition == "RDV")
 
 # Define median_se function
 median_se <- function(x) {
@@ -642,11 +645,19 @@ decay_df_untreated %>%
              alpha = 0.1, stroke = 0.1,size = 0.6, colour = "#26547c") + 
   geom_pointrange(stat = "summary", fun.data = median_se,
                   size = 0.3, alpha = 1, colour = "#26547c") +
+  geom_line(data = decay_line_gRNA_INF, aes(x = time, y = fit, group = condition),
+            linetype = "dashed", colour = "#d1ab75", size = 0.5,
+            inherit.aes = FALSE) +
+  geom_vline(data = decay_anno_INF, aes(xintercept = x_pos+24, group = condition),
+             linetype = "dotted", colour = "gray30", size = 0.4) +
+  geom_text(data = decay_anno_INF, aes(x = x_pos + 26, y = 1500000, label = label, group = condition),
+            size = 2, hjust = 0,
+            inherit.aes = FALSE) +
   scale_x_continuous(breaks = c(24, 26, 28, 32, 48),
                      limits = c(22, 50)) +
   scale_y_continuous(labels = label_number(scale = 1/1e6, accuracy = 0.1)) +
-  coord_cartesian(ylim = c(0, 10*10^6)) +
-  labs(title = "gRNA decay curve (Untreated)",
+  coord_cartesian(ylim = c(0, 5*10^6)) +
+  labs(title = "gRNA count (Untreated)",
        x = "Hours post infection",
        y = expression(RNA~count~(x10^6)~linear~scale)) + 
   theme_classic(base_size = 7) + 
@@ -664,19 +675,19 @@ decay_df_RDV %>%
              alpha = 0.2, stroke = 0.1, size = 0.6, colour = "#75b8d1") + 
   geom_pointrange(stat = "summary", fun.data = median_se,
                   size = 0.3, alpha = 1, colour = "#26547c") +
-  geom_line(data = decay_line, aes(x = time, y = fit, group = Channel),
+  geom_line(data = decay_line_gRNA_RDV, aes(x = time, y = fit, group = condition),
             linetype = "dashed", colour = "#d1ab75", size = 0.5,
             inherit.aes = FALSE) +
-  geom_vline(data = decay_anno, aes(xintercept = x_pos+24, group = Channel),
+  geom_vline(data = decay_anno_RDV, aes(xintercept = x_pos+24, group = condition),
              linetype = "dotted", colour = "gray30", size = 0.4) +
-  geom_text(data = decay_anno, aes(x = x_pos + 26, y = 1500000, label = label, group = Channel),
+  geom_text(data = decay_anno_RDV, aes(x = x_pos + 26, y = 1500000, label = label, group = condition),
             size = 2, hjust = 0,
             inherit.aes = FALSE) +
   scale_x_continuous(breaks = c(24, 26, 28, 32, 48),
                      limits = c(22, 50)) +
   scale_y_continuous(labels = label_number(scale = 1/1e6, accuracy = 0.1)) +
-  coord_cartesian(ylim = c(0, 10*10^6)) +
-  labs(title = "gRNA decay curve (RDV treatment at 24 hpi)",
+  coord_cartesian(ylim = c(0, 5*10^6)) +
+  labs(title = "gRNA count (RDV treatment at 24 hpi)",
        x = "Hours post infection",
        y = expression(RNA~count~(x10^6)~linear~scale)) + 
   theme_classic(base_size = 7) + 
@@ -689,12 +700,77 @@ decay_df_RDV %>%
 decay_UT + decay_RDV
 
 
-pdf("./Plots/Decay_combined.pdf",
-    width = 11/2.54, height = 5.5/2.54)
-print(decay_UT + decay_RDV)
-dev.off()
+# pdf("./Plots/Decay_combined.pdf",
+#     width = 11/2.54, height = 5.5/2.54)
+# print(decay_UT + decay_RDV)
+# dev.off()
 
 ```
+
+## Super-permissice cells after 24 hpi
+
+```{r}
+# * * * * * Import data 
+
+decay_df_super <- read_csv("./Data/Figure3/CF06_RNA-quantification_df6.csv") %>%
+  filter(Channel == "gRNA") %>%
+  mutate(time = paste0(time, "h")) %>%
+  mutate(cell_id = str_remove(cell_id, "[:digit:]$")) %>%
+  mutate(cell_id = str_remove(cell_id, "[:digit:]$"))
+
+# * * * * * Calculated super-permissive cell proportion
+
+decay_df_super_plot <- decay_df_super %>%
+  mutate(is_super = if_else(
+    RNA_count > 100000,
+    TRUE,
+    FALSE
+  )) %>%
+  group_by(time, condition, cell_id) %>%
+  summarise(n_cell = n(),
+            n_super = sum(is_super),
+            p_super = sum(is_super)/n() * 100) %>%
+  ungroup() %>%
+  mutate(condition = fct_rev(condition))
+
+# * * * * * Stats
+
+decay_df_super_plot %>%
+  group_by(time) %>%
+  t_test(p_super ~ condition) %>%
+  add_significance() -> decay_df_super_plot_stat
+  
+
+# * * * * * Plot
+
+decay_df_super_plot %>%
+  ggplot(aes(x = time, y = p_super, fill = condition)) +
+  geom_bar(stat = "summary", width = 0.6,
+           position = position_dodge(width = 0.75)) +
+  geom_linerange(size = 0.5, alpha = 1,
+                 stat = "summary", fun.data = "mean_se", fun.args = list(mult = 1),
+                 position = position_dodge(width = 0.75)) +
+  geom_text(data = decay_df_super_plot_stat,
+            aes(x = time, y = 85, label = p.signif),
+            size = 2.5,
+            inherit.aes = FALSE) +
+  labs(title = "Percentage super-permissive cells",
+       x = "Hours post infection",
+       y = "% of cells (per FOV)") +
+  scale_fill_manual(values = c("#26547c", "#75b8d1")) +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(hjust = 0.5, size = 7),
+        axis.line = element_blank(),
+        axis.text.x = element_text(hjust = 0.5, vjust = 0.5),
+        legend.position = "right",
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> decay_super_plot
+
+decay_super_plot
+
+
+```
+
 
 ## Cytopathy after 24 hpi
 
@@ -737,23 +813,24 @@ decay_cellcount_df %>%
             inherit.aes = FALSE) + 
   scale_fill_manual(values = c("#26547c", "#75b8d1")) +
   scale_y_continuous(limits = c(0, 1)) +
-  labs(title = "Number of viable cells",
+  labs(title = "Proportion of viable cells",
        x = "Hours post infection",
-       y = "Normalised cell count per field of view") +
+       y = "Normalised cell count (per FOV)") +
   theme_classic(base_size = 7) +
   theme(plot.title = element_text(hjust = 0.5, size = 7),
         axis.line = element_blank(),
         axis.text.x = element_text(hjust = 0.5, vjust = 0.5),
-        legend.position = "none",
+        legend.position = "right",
         panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
         strip.background = element_rect(colour = "black", fill = NA, size = 0.5)) -> decay_cellcount
 
-decay_cellcount
+decay_super_plot + decay_cellcount + plot_layout(guides = "collect")
 
-pdf("./Plots/Decay_cellcount.pdf",
-    width = 4/2.54, height = 5.86/2.54)
-print(decay_cellcount)
-dev.off()
+# pdf("./Plots/Decay_cellcount_psuper.pdf",
+#     width = 13.3/2.54, height = 5.5/2.54)
+# print(decay_super_plot + decay_cellcount + plot_layout(guides = "collect"))
+# dev.off()
+
 
 ```
 
