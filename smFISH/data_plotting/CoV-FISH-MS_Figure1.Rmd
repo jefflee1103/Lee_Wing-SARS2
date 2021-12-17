@@ -292,6 +292,37 @@ dev.off()
 
 ```
 
+# SUPPLEMENTARY
+
+## Immobilised virus spot intensity distribution
+
+```{r}
+virus_spots <- 
+  read_tsv("./Data/Figure1/_FISH-QUANT__threshold_spots_210509.txt", skip = 13) %>%
+  filter(TH_fit == 1) %>%
+  select(c(INT_filt, INT_raw)) %>%
+  mutate(strand = "(+)ve strand smFISH")
+
+virus_spots %>%
+  ggplot(aes(x = INT_filt)) + 
+  geom_density(adjust = 0.8, size = 0.5, colour = "goldenrod1") +
+  # scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(x = "Single spot fluorescence intensity (A.U.)",
+       y = "Density") +
+  theme_classic(base_size = 6) +
+  theme(axis.line = element_blank(), 
+        panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+        legend.title = element_blank(),
+        legend.position = "bottom") +
+  guides(colour = guide_legend(reverse = TRUE))
+
+ggsave("./Plots/immobilised_virus_FISH_intensity_distribution.pdf",
+       width = 4.5, height = 4,
+       units = "cm",
+       useDingbats = FALSE)
+
+```
+
 
 
 
