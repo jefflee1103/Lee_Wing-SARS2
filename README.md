@@ -2,7 +2,9 @@
 
 ### Absolute quantitation of individual SARS-CoV-2 RNA molecules: a new paradigm for infection dynamics and variant differences  
 
-This repository contains source codes for reproducing figures presented in the Lee & Wing SARS-CoV-2 smFISH manuscript [BioRxiv link](https://www.biorxiv.org/content/10.1101/2021.06.29.450133v2.full).  
+This repository contains source codes for reproducing figures presented in the Lee & Wing SARS-CoV-2 smFISH manuscript [eLife link](https://elifesciences.org/articles/74153).  
+
+Check out the promotional video explaining our work (simple English) - [Lab twitter link](https://twitter.com/ilandavislab/status/1487396079142416389?s=20&t=UMhSP_achh5Sp-3NFdCNZQ). 
 
 <img src="https://github.com/jefflee1103/Lee_Wing-SARS2/raw/main/Graphical_abstract.png" width="500" height="500">   
 
